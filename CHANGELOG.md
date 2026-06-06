@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-06-06
+
+### Added
+
+- Quit modal on Ctrl+Q with step-by-step shutdown progress (network stop, per-transfer pause/remove, client teardown)
+- `engine.shutdown()` reports progress callbacks for staged teardown
+
+### Fixed
+
+- Ctrl+Q works during splash and while searches/adds are in progress
+- Splash screen fills the terminal height with vertically centered content
+
 ## [0.3.0] - 2026-06-06
 
 ### Added
@@ -54,5 +66,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Enter on results pane starts downloads instead of leaking into the search field
 - Settings fields are editable via Enter / Space / choice picker with visible save feedback
 
+[0.3.1]: https://github.com/j-norwood-young/clitorrents/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/j-norwood-young/clitorrents/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/j-norwood-young/clitorrents/compare/v0.1.0...v0.2.0

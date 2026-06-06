@@ -52,6 +52,23 @@ export type TorrentSnapshot = {
   mediaCategory?: string;
 };
 
+export type ShutdownProgress = {
+  message: string;
+  phase: 'network' | 'torrent' | 'client' | 'done';
+};
+
+function yieldToUi(): Promise<void> {
+  return new Promise((resolve) => {
+    setImmediate(resolve);
+  });
+}
+
+function shortTorrentLabel(t: Torrent): string {
+  const name = t.name?.trim();
+  if (name) return name.length > 42 ? `${name.slice(0, 39)}…` : name;
+  return t.infoHash.slice(0, 12);
+}
+
 export type AddTorrentOptions = {
   /** Used for category routing at add time; destination is fixed once added. */
   name?: string;
@@ -406,9 +423,55 @@ export class TorrentEngine extends EventEmitter {
   }
 
   async destroy(): Promise<void> {
+    await this.shutdown();
+  }
+
+  async shutdown(onProgress?: (progress: ShutdownProgress) => void): Promise<void> {
+    const report = (message: string, phase: ShutdownProgress['phase']): void => {
+      onProgress?.({ message, phase });
+    };
+
+    report('Stopping network monitor…', 'network');
     this.connectivity.stop();
+    await yieldToUi();
+
+    report('Stopping status updates…', 'network');
     this.stopTick();
+    await yieldToUi();
+
+    const torrents = [...this.client.torrents];
+    const total = torrents.length;
+
+    if (total === 0) {
+      report('No active transfers', 'torrent');
+      await yieldToUi();
+    } else {
+      for (let i = 0; i < torrents.length; i++) {
+        const t = torrents[i]!;
+        const label = shortTorrentLabel(t);
+        const step = `${i + 1}/${total}`;
+
+        if (t.ready && !t.done) {
+          report(`Pausing ${label} (${step})…`, 'torrent');
+          const n = t.pieces.length;
+          if (n > 0) t.deselect(0, n - 1);
+          t.pause();
+          await yieldToUi();
+        }
+
+        report(`Stopping ${label} (${step})…`, 'torrent');
+        this.meta.delete(t.infoHash);
+        await this.client.remove(t, { destroyStore: false });
+        await yieldToUi();
+      }
+    }
+
+    report('Closing torrent client…', 'client');
     await this.client.destroy();
+    this.meta.clear();
+    await yieldToUi();
+
+    report('Done', 'done');
   }
 }
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Box, Text } from 'ink';
+import { Box, Text, useWindowSize } from 'ink';
 
 const FRAMES = [
   `
@@ -29,6 +29,7 @@ export function Splash({
   onDone: () => void;
   minMs?: number;
 }): React.ReactNode {
+  const { columns = 80, rows = 24 } = useWindowSize();
   const [frame, setFrame] = useState(0);
   const [spin, setSpin] = useState(0);
   const started = React.useRef(Date.now());
@@ -49,11 +50,15 @@ export function Splash({
   }, [minMs, onDone]);
 
   return (
-    <Box flexDirection="column" alignItems="center" justifyContent="center">
-      <Text color="cyan">{FRAMES[frame]}</Text>
-      <Text color="green">
-        {SPINNER[spin]} Loading torrent engine…
-      </Text>
+    <Box width={columns} height={rows} flexDirection="column" overflow="hidden">
+      <Box flexGrow={1} />
+      <Box flexDirection="column" alignItems="center" width={columns}>
+        <Text color="cyan">{FRAMES[frame]}</Text>
+        <Text color="green">
+          {SPINNER[spin]} Loading torrent engine…
+        </Text>
+      </Box>
+      <Box flexGrow={1} />
     </Box>
   );
 }

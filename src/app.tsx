@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Box, Text, useInput, usePaste, useApp, useWindowSize } from 'ink';
 import type { TorrentEngine } from './engine/torrent-engine.js';
 import type { AppConfig } from './config.js';
@@ -31,8 +31,10 @@ import {
   type ConfigField,
 } from './ui/config-editor.js';
 import { Modal } from './ui/modal.js';
+import { QuitModal, type QuitState } from './ui/quit-modal.js';
 import type { AppView, FocusPane } from './ui/list-utils.js';
 import { getHotkeyHelp } from './ui/hotkey-help.js';
+import { isQuitKey } from './ui/keys.js';
 import { isTorrentUiPaused } from './ui/list-utils.js';
 
 export function App({
@@ -46,6 +48,8 @@ export function App({
   const { columns: width = 80, rows: termRows = 24 } = useWindowSize();
   const [, setTick] = useState(0);
   const [showSplash, setShowSplash] = useState(true);
+  const [quitState, setQuitState] = useState<QuitState | null>(null);
+  const quittingRef = useRef(false);
 
   const [config, setConfig] = useState<AppConfig>(initialConfig);
   const [view, setView] = useState<AppView>({ kind: 'main' });
@@ -108,6 +112,35 @@ export function App({
       setBusy('idle');
     }
   }, [query, config]);
+
+  const quitApp = useCallback(() => {
+    if (quittingRef.current) return;
+    quittingRef.current = true;
+    setShowSplash(false);
+
+    const initial = 'Preparing to quit…';
+    setQuitState({ message: initial, log: [initial] });
+
+    void (async () => {
+      try {
+        await engine.shutdown((progress) => {
+          setQuitState((prev) => ({
+            message: progress.message,
+            log: [...(prev?.log ?? []), progress.message],
+          }));
+        });
+      } catch {
+        setQuitState((prev) => {
+          const err = 'Shutdown error — exiting anyway';
+          return prev
+            ? { message: err, log: [...prev.log, err] }
+            : { message: err, log: [err] };
+        });
+      } finally {
+        exit();
+      }
+    })();
+  }, [engine, exit]);
 
   const addSelected = useCallback(async () => {
     const row = results[ri];
@@ -176,10 +209,14 @@ export function App({
 
   useInput(
     (input, key) => {
-      if (key.ctrl && input === 'q') {
-        void engine.destroy().finally(() => exit());
+      if (isQuitKey(input, key)) {
+        quitApp();
         return;
       }
+
+      if (quitState) return;
+
+      if (showSplash) return;
 
       if (key.ctrl && input === 'o') {
         if (view.kind !== 'config') {
@@ -322,8 +359,7 @@ export function App({
           return;
         }
       }
-    },
-    { isActive: !showSplash }
+    }
   );
 
   function cycleFocusForward(): void {
@@ -593,7 +629,7 @@ export function App({
     applyFieldUpdate(next);
   }
 
-  if (showSplash) {
+  if (showSplash && !quitState) {
     return <Splash onDone={() => setShowSplash(false)} />;
   }
 
@@ -608,7 +644,7 @@ export function App({
 
   const detailPeerLines = Math.max(2, Math.min(6, mainContentHeight - 12));
 
-  const modalOpen = view.kind !== 'main';
+  const modalOpen = view.kind !== 'main' || quitState !== null;
   const configPickerOptionCount = configPickerOpen
     ? getChoiceOptions(configField, config).length
     : 0;
@@ -617,13 +653,15 @@ export function App({
     : Math.min(mainContentHeight - 2, 16);
   const detailModalHeight = Math.min(mainContentHeight - 2, 10 + detailPeerLines);
 
-  const hotkeyHelp = getHotkeyHelp({
-    view,
-    focus,
-    configEditing,
-    configPickerOpen,
-    compact: termRows < 22,
-  });
+  const hotkeyHelp = quitState
+    ? 'Shutting down — please wait…'
+    : getHotkeyHelp({
+        view,
+        focus,
+        configEditing,
+        configPickerOpen,
+        compact: termRows < 22,
+      });
 
   return (
     <Box height={termRows} flexDirection="column" overflow="hidden">
@@ -737,6 +775,10 @@ export function App({
               maxPeerLines={detailPeerLines}
             />
           </Modal>
+        ) : null}
+
+        {quitState ? (
+          <QuitModal state={quitState} areaWidth={width} areaHeight={mainContentHeight} />
         ) : null}
       </Box>
 
