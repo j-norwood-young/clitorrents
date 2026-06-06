@@ -36,6 +36,24 @@ npm start
 # or: node dist/cli.js
 ```
 
+## Operating modes
+
+| Command | Description |
+|---------|-------------|
+| `clitorrents` | Interactive TUI (default) |
+| `clitorrents search "<query>"` | Print search results to stdout |
+| `clitorrents download "<query\|magnet\|hash\|url>"` | Download and stream progress until done |
+| `clitorrents mcp` | MCP server on stdio (for AI tooling) |
+
+### CLI examples
+
+```bash
+clitorrents search sintel --provider 1337x --limit 10
+clitorrents download "magnet:?xt=urn:btih:..."
+clitorrents download sintel --pick 1 --dir ./downloads
+clitorrents download sintel --ratio 1.5 --download-limit 5000000
+```
+
 ## Configuration
 
 On first run, a template config is written to:
@@ -46,11 +64,22 @@ Per-torrent overrides (ratio caps from the detail view, etc.) are stored in:
 
 `~/.config/clitorrents/torrent-overrides.json`
 
+You can also edit settings in the TUI with Ctrl+O.
+
+### Save location
+
+- **Default:** current working directory (`process.cwd()`)
+- **Permanent override:** set `downloadDir` in `config.json` (applies whenever you run clitorrents)
+- **Category routing:** enable `categories` to send TV, movies, and music to separate folders (detected from torrent names at add time)
+- Destination is fixed when a torrent is added; changing `downloadDir` only affects new downloads
+
 ### Config fields
 
 | Field | Meaning |
 |--------|---------|
-| `downloadDir` | Where downloaded files are stored |
+| `downloadDir` | Permanent save dir override (`null` = use cwd) |
+| `categories.enabled` | Route TV/movies/music to separate dirs |
+| `categories.tv` / `movies` / `music` | Category directory paths |
 | `torrents.limit` | Max results returned by provider search |
 | `torrents.providers.active` | Provider used first (fallback starts here) |
 | `torrents.providers.available` | Provider fallback order list |
@@ -66,37 +95,56 @@ Per-torrent overrides (ratio caps from the detail view, etc.) are stored in:
 - If search returns no rows, try switching `torrents.providers.active` or reordering `torrents.providers.available`.
 - Status text after search includes per-provider results/errors to help diagnose provider failures.
 
-## Keybindings
+## Keybindings (TUI)
 
 | Key | Action |
 |-----|--------|
-| Tab | Switch between Search and Transfers panes |
-| Enter | Run search (search pane, type mode) / add selected result (pick mode) / open torrent detail (transfers) |
-| p | Toggle pause / resume download (piece deselect + pause) |
+| Tab | Cycle focus: Search → Results → Transfers |
+| Enter | Search (search focus) / add result (results) / open detail (transfers) |
+| ↑↓ | Navigate results or transfers (when that pane is focused) |
+| p | Toggle pause / resume download |
 | o | Open download folder (or reveal file on macOS) |
 | x | Remove torrent, **keep** files on disk |
 | X | Remove torrent and **delete** downloaded data |
-| [ ] | In detail: cycle per-torrent max seed ratio preset |
-| Esc | Back from detail view (or leave result pick mode with `i`) |
-| i | In search pick mode: return to typing query |
-| q | Quit |
+| [ ] | Cycle per-torrent max seed ratio (detail/transfers) |
+| , . | Cycle global download limit down/up |
+| < > | Cycle global upload limit down/up |
+| { } | Cycle default max ratio down/up |
+| Ctrl+O | Open settings editor (saved to config.json) |
+| Esc | Back from detail or settings |
+| Ctrl+Q | Quit |
+
+Search is always editable — type anytime without switching modes.
+
+## MCP server
+
+```bash
+clitorrents mcp
+```
+
+Tools: `search`, `add_torrent`, `list_transfers`, `transfer_status`, `pause_torrent`, `resume_torrent`, `remove_torrent`, `set_limits`, `get_config`, `set_config`.
 
 ## Manual check
 
 1. Review `config.json` provider settings.
 2. Search for `sintel` and add a result.
-3. Confirm progress, ETA, peer list, and sparkline update.
+3. Confirm progress, ETA, peer list, sparkline, and save path update.
 4. Press `o` to open the download directory.
+5. Press Ctrl+O to verify settings editor saves.
 
 ## WebTorrent behavior
 
-This client uses WebTorrent, not libtorrent. Pause uses **deselecting pieces** plus `torrent.pause()`, so behavior may differ from desktop clients like qBittorrent. Global bandwidth limits apply to the whole client; per-torrent speed caps are not implemented in v1 (only ratio / upload-byte policies and global throttles).
+This client uses WebTorrent, not libtorrent. Pause uses **deselecting pieces** plus `torrent.pause()`, so behavior may differ from desktop clients like qBittorrent. Global bandwidth limits apply to the whole client; per-torrent speed caps are not implemented (only ratio / upload-byte policies and global throttles).
+
+When the network is unavailable, clitorrents detects offline status, pauses torrents, and polls at a reduced rate to save power until connectivity returns.
 
 ## Tests
 
 ```bash
 npm test
 ```
+
+Runs unit tests for config, media classification, connectivity monitoring, CLI parsing, and UI components — all offline, suitable for CI.
 
 ## Development reference
 

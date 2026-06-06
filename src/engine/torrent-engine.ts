@@ -1,16 +1,24 @@
 import EventEmitter from 'node:events';
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import WebTorrent from 'webtorrent';
 import type { Torrent } from 'webtorrent';
 import type { AppConfig, TorrentOverridesFile } from '../config.js';
 import {
   getMergedTorrentPolicy,
   loadTorrentOverrides,
+  resolveBaseDir,
+  saveConfig,
   saveTorrentOverrides,
   setTorrentOverride,
 } from '../config.js';
+import { classifyMedia, resolveDownloadDir } from '../media/classify.js';
+import { ConnectivityMonitor } from '../net/connectivity.js';
 
 const HISTORY_LEN = 48;
+const TICK_MS_ONLINE = 400;
+const TICK_MS_OFFLINE = 5000;
 
 export type PeerRow = {
   key: string;
@@ -41,6 +49,14 @@ export type TorrentSnapshot = {
   history: readonly number[];
   maxRatio: number | null;
   maxUploadBytes: number | null;
+  mediaCategory?: string;
+};
+
+export type AddTorrentOptions = {
+  /** Used for category routing at add time; destination is fixed once added. */
+  name?: string;
+  /** Override base/category resolution for this add only */
+  downloadDir?: string;
 };
 
 type WireLike = {
@@ -53,27 +69,53 @@ type WireLike = {
   uploadSpeed: () => number;
 };
 
+type TorrentMeta = {
+  dlPaused: boolean;
+  history: number[];
+  limitNotified: boolean;
+  mediaCategory?: string;
+  pausedByOffline?: boolean;
+};
+
 export class TorrentEngine extends EventEmitter {
   private client: InstanceType<typeof WebTorrent>;
   private config: AppConfig;
   private overrides: TorrentOverridesFile;
-  private meta = new Map<
-    string,
-    { dlPaused: boolean; history: number[]; limitNotified: boolean }
-  >();
+  private baseDownloadDir: string;
+  private meta = new Map<string, TorrentMeta>();
   private tickHandle: ReturnType<typeof setInterval> | null = null;
+  private tickMs = TICK_MS_ONLINE;
+  private connectivity: ConnectivityMonitor;
+  private networkOnline = true;
 
-  constructor(config: AppConfig) {
+  constructor(config: AppConfig, opts?: { connectivity?: ConnectivityMonitor }) {
     super();
     this.config = config;
     this.overrides = loadTorrentOverrides();
-    fs.mkdirSync(config.downloadDir, { recursive: true });
+    this.baseDownloadDir = resolveBaseDir(config);
+    fs.mkdirSync(this.baseDownloadDir, { recursive: true });
     this.client = new WebTorrent({
       downloadLimit: normLimit(config.globalDownloadLimitBps),
       uploadLimit: normLimit(config.globalUploadLimitBps),
     });
     this.applyGlobalThrottle();
+    this.connectivity = opts?.connectivity ?? new ConnectivityMonitor();
+    this.connectivity.on('offline', () => this.handleOffline());
+    this.connectivity.on('online', () => this.handleOnline());
+    this.connectivity.start();
     this.startTick();
+  }
+
+  getConfig(): AppConfig {
+    return this.config;
+  }
+
+  getBaseDownloadDir(): string {
+    return this.baseDownloadDir;
+  }
+
+  isNetworkOnline(): boolean {
+    return this.networkOnline;
   }
 
   getClientDownloadSpeed(): number {
@@ -84,10 +126,37 @@ export class TorrentEngine extends EventEmitter {
     return this.client.uploadSpeed;
   }
 
-  setConfig(config: AppConfig): void {
+  /** Applies to new torrents only; in-flight destinations are unchanged. */
+  setBaseDownloadDir(dir: string): void {
+    this.baseDownloadDir = pathResolve(dir);
+    fs.mkdirSync(this.baseDownloadDir, { recursive: true });
+    this.emit('update');
+  }
+
+  setConfig(config: AppConfig, opts?: { persist?: boolean }): void {
     this.config = config;
-    fs.mkdirSync(config.downloadDir, { recursive: true });
+    this.baseDownloadDir = resolveBaseDir(config);
+    fs.mkdirSync(this.baseDownloadDir, { recursive: true });
     this.applyGlobalThrottle();
+    if (opts?.persist) saveConfig(config);
+    this.emit('update');
+  }
+
+  setGlobalLimits(downloadBps: number, uploadBps: number, persist = false): void {
+    this.config = {
+      ...this.config,
+      globalDownloadLimitBps: downloadBps,
+      globalUploadLimitBps: uploadBps,
+    };
+    this.applyGlobalThrottle();
+    if (persist) saveConfig(this.config);
+    this.emit('update');
+  }
+
+  setDefaultMaxRatio(ratio: number | null, persist = false): void {
+    this.config = { ...this.config, defaultMaxRatio: ratio };
+    if (persist) saveConfig(this.config);
+    this.emit('update');
   }
 
   reloadOverrides(): void {
@@ -101,9 +170,41 @@ export class TorrentEngine extends EventEmitter {
     this.client.throttleUpload(u < 0 ? -1 : u);
   }
 
+  private handleOffline(): void {
+    this.networkOnline = false;
+    this.setTickInterval(TICK_MS_OFFLINE);
+    for (const t of this.client.torrents) {
+      const m = this.meta.get(t.infoHash);
+      if (!m || m.dlPaused || t.done) continue;
+      this.pauseDownload(t.infoHash, { byOffline: true });
+    }
+    this.emit('network', 'offline');
+    this.emit('update');
+  }
+
+  private handleOnline(): void {
+    this.networkOnline = true;
+    this.setTickInterval(TICK_MS_ONLINE);
+    for (const t of this.client.torrents) {
+      const m = this.meta.get(t.infoHash);
+      if (m?.pausedByOffline && m.dlPaused) {
+        this.resumeDownload(t.infoHash);
+        m.pausedByOffline = false;
+      }
+    }
+    this.emit('network', 'online');
+    this.emit('update');
+  }
+
+  private setTickInterval(ms: number): void {
+    this.tickMs = ms;
+    this.stopTick();
+    this.startTick();
+  }
+
   private startTick(): void {
     if (this.tickHandle) return;
-    this.tickHandle = setInterval(() => this.emitSnapshot(), 400);
+    this.tickHandle = setInterval(() => this.emitSnapshot(), this.tickMs);
   }
 
   stopTick(): void {
@@ -187,6 +288,7 @@ export class TorrentEngine extends EventEmitter {
       history: Object.freeze([...(m?.history ?? [])]) as readonly number[],
       maxRatio: policy.maxRatio,
       maxUploadBytes: policy.maxUploadBytes,
+      mediaCategory: m?.mediaCategory,
     };
   }
 
@@ -209,10 +311,16 @@ export class TorrentEngine extends EventEmitter {
     return this.client.torrents.find((x) => x.infoHash === infoHash);
   }
 
-  async add(torrentId: string | Uint8Array): Promise<void> {
-    const tor = this.client.add(torrentId as unknown, {
-      path: this.config.downloadDir,
-    });
+  async add(torrentId: string | Uint8Array, options: AddTorrentOptions = {}): Promise<void> {
+    const name = options.name ?? '';
+    const dir =
+      options.downloadDir ??
+      (name ? resolveDownloadDir(name, this.config, this.baseDownloadDir) : this.baseDownloadDir);
+    fs.mkdirSync(dir, { recursive: true });
+
+    const mediaCategory = name ? classifyMedia(name) : undefined;
+
+    const tor = this.client.add(torrentId as unknown, { path: dir });
 
     return new Promise<void>((resolve, reject) => {
       let settled = false;
@@ -232,10 +340,12 @@ export class TorrentEngine extends EventEmitter {
 
       tor.once('ready', () => {
         const ih = tor.infoHash;
-        this.meta.set(ih, { dlPaused: false, history: [], limitNotified: false });
-        // Do not subscribe to `download` / `upload` — WebTorrent fires them very often (often per
-        // piece) and calling into React each time starves stdin so Ink stops receiving keys. The
-        // 400ms tick + this one snapshot after metadata are enough for the UI.
+        this.meta.set(ih, {
+          dlPaused: false,
+          history: [],
+          limitNotified: false,
+          mediaCategory,
+        });
         this.emitSnapshot();
       });
 
@@ -243,7 +353,7 @@ export class TorrentEngine extends EventEmitter {
     });
   }
 
-  pauseDownload(infoHash: string): void {
+  pauseDownload(infoHash: string, opts?: { byOffline?: boolean }): void {
     const t = this.findTorrent(infoHash);
     if (!t?.ready) return;
     const n = t.pieces.length;
@@ -255,6 +365,7 @@ export class TorrentEngine extends EventEmitter {
       limitNotified: false,
     };
     m.dlPaused = true;
+    if (opts?.byOffline) m.pausedByOffline = true;
     this.meta.set(infoHash, m);
     this.emit('update');
   }
@@ -262,11 +373,15 @@ export class TorrentEngine extends EventEmitter {
   resumeDownload(infoHash: string): void {
     const t = this.findTorrent(infoHash);
     if (!t?.ready) return;
+    if (!this.networkOnline) return;
     const n = t.pieces.length;
     if (n > 0) t.select(0, n - 1, 0);
     t.resume();
     const m = this.meta.get(infoHash);
-    if (m) m.dlPaused = false;
+    if (m) {
+      m.dlPaused = false;
+      m.pausedByOffline = false;
+    }
     this.emit('update');
   }
 
@@ -290,6 +405,7 @@ export class TorrentEngine extends EventEmitter {
   }
 
   async destroy(): Promise<void> {
+    this.connectivity.stop();
     this.stopTick();
     await this.client.destroy();
   }
@@ -297,4 +413,11 @@ export class TorrentEngine extends EventEmitter {
 
 function normLimit(bps: number): number {
   return bps < 0 ? -1 : bps;
+}
+
+function pathResolve(dir: string): string {
+  const expanded = dir.startsWith('~')
+    ? path.join(os.homedir(), dir.slice(1))
+    : dir;
+  return path.resolve(expanded);
 }

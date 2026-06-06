@@ -3,13 +3,25 @@ import path from 'node:path';
 import os from 'node:os';
 import { z } from 'zod';
 
-const configDir = path.join(
-  process.env.XDG_CONFIG_HOME ?? path.join(os.homedir(), '.config'),
-  'clitorrents'
-);
+function getConfigDir(): string {
+  return path.join(
+    process.env.XDG_CONFIG_HOME ?? path.join(os.homedir(), '.config'),
+    'clitorrents'
+  );
+}
 
-export const configPath = path.join(configDir, 'config.json');
-export const torrentOverridesPath = path.join(configDir, 'torrent-overrides.json');
+export function getConfigPath(): string {
+  return path.join(getConfigDir(), 'config.json');
+}
+
+export function getTorrentOverridesPath(): string {
+  return path.join(getConfigDir(), 'torrent-overrides.json');
+}
+
+/** @deprecated use getConfigPath() */
+export const configPath = getConfigPath();
+/** @deprecated use getTorrentOverridesPath() */
+export const torrentOverridesPath = getTorrentOverridesPath();
 
 /** Same default list as cliflix — many sites change often; edit config if needed */
 export const DEFAULT_TORRENT_PROVIDERS = [
@@ -23,8 +35,19 @@ export const DEFAULT_TORRENT_PROVIDERS = [
   'Torrentz2',
 ] as const;
 
+export const CategoriesConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  tv: z.string().optional(),
+  movies: z.string().optional(),
+  music: z.string().optional(),
+});
+
+export type CategoriesConfig = z.infer<typeof CategoriesConfigSchema>;
+
 export const AppConfigSchema = z.object({
-  downloadDir: z.string(),
+  /** When null/omitted, downloads use process.cwd() unless overridden in-app */
+  downloadDir: z.string().nullable().optional(),
+  categories: CategoriesConfigSchema.optional(),
   torrents: z.object({
     limit: z.number().int().positive().default(30),
     providers: z.object({
@@ -59,7 +82,8 @@ export type TorrentOverridesFile = z.infer<typeof TorrentOverridesFileSchema>;
 
 function defaultConfig(): AppConfig {
   return {
-    downloadDir: path.join(os.homedir(), 'Downloads', 'clitorrents'),
+    downloadDir: null,
+    categories: { enabled: false },
     torrents: {
       limit: 30,
       providers: {
@@ -83,9 +107,14 @@ function mergeWithDefaults(raw: Record<string, unknown>): AppConfig {
   const base = defaultConfig();
   const rt = raw.torrents as Record<string, unknown> | undefined;
   const rp = rt?.providers as Record<string, unknown> | undefined;
+  const rc = raw.categories as Record<string, unknown> | undefined;
   const merged: Record<string, unknown> = {
     ...base,
     ...raw,
+    categories: {
+      ...base.categories,
+      ...(rc ?? {}),
+    },
     torrents: {
       ...base.torrents,
       ...(rt ?? {}),
@@ -103,9 +132,15 @@ function mergeWithDefaults(raw: Record<string, unknown>): AppConfig {
   return AppConfigSchema.parse(merged);
 }
 
+/** Base download dir: explicit config override, else cwd. */
+export function resolveBaseDir(config: AppConfig, cwd = process.cwd()): string {
+  if (config.downloadDir) return path.resolve(config.downloadDir);
+  return path.resolve(cwd);
+}
+
 export function loadConfig(): AppConfig {
   try {
-    const raw = JSON.parse(fs.readFileSync(configPath, 'utf8')) as Record<string, unknown>;
+    const raw = JSON.parse(fs.readFileSync(getConfigPath(), 'utf8')) as Record<string, unknown>;
     return mergeWithDefaults(raw);
   } catch {
     return defaultConfig();
@@ -113,12 +148,13 @@ export function loadConfig(): AppConfig {
 }
 
 export function saveConfig(config: AppConfig): void {
-  fs.mkdirSync(path.dirname(configPath), { recursive: true });
-  fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
+  const p = getConfigPath();
+  fs.mkdirSync(path.dirname(p), { recursive: true });
+  fs.writeFileSync(p, JSON.stringify(config, null, 2), 'utf8');
 }
 
 export function ensureConfigExists(): AppConfig {
-  if (!fs.existsSync(configPath)) {
+  if (!fs.existsSync(getConfigPath())) {
     const d = defaultConfig();
     saveConfig(d);
     return d;
@@ -128,7 +164,7 @@ export function ensureConfigExists(): AppConfig {
 
 export function loadTorrentOverrides(): TorrentOverridesFile {
   try {
-    const raw = fs.readFileSync(torrentOverridesPath, 'utf8');
+    const raw = fs.readFileSync(getTorrentOverridesPath(), 'utf8');
     const parsed = JSON.parse(raw) as unknown;
     return TorrentOverridesFileSchema.parse(parsed);
   } catch {
@@ -137,8 +173,9 @@ export function loadTorrentOverrides(): TorrentOverridesFile {
 }
 
 export function saveTorrentOverrides(data: TorrentOverridesFile): void {
-  fs.mkdirSync(path.dirname(torrentOverridesPath), { recursive: true });
-  fs.writeFileSync(torrentOverridesPath, JSON.stringify(data, null, 2), 'utf8');
+  const p = getTorrentOverridesPath();
+  fs.mkdirSync(path.dirname(p), { recursive: true });
+  fs.writeFileSync(p, JSON.stringify(data, null, 2), 'utf8');
 }
 
 export function getMergedTorrentPolicy(
@@ -174,4 +211,19 @@ export function setTorrentOverride(
       [key]: cleaned,
     },
   };
+}
+
+export function updateGlobalLimits(
+  config: AppConfig,
+  patch: { globalDownloadLimitBps?: number; globalUploadLimitBps?: number }
+): AppConfig {
+  return {
+    ...config,
+    globalDownloadLimitBps: patch.globalDownloadLimitBps ?? config.globalDownloadLimitBps,
+    globalUploadLimitBps: patch.globalUploadLimitBps ?? config.globalUploadLimitBps,
+  };
+}
+
+export function updateDefaultRatio(config: AppConfig, ratio: number | null): AppConfig {
+  return { ...config, defaultMaxRatio: ratio };
 }

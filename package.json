@@ -1,6 +1,6 @@
 {
   "name": "clitorrents",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "TUI torrent client",
   "type": "module",
   "bin": {
@@ -14,13 +14,14 @@
     "build": "tsc",
     "prepack": "npm run build",
     "start": "node dist/cli.js",
-    "test": "tsx --test src/**/*.test.ts"
+    "test": "tsx --test 'src/**/*.test.ts' 'src/**/*.test.tsx'"
   },
   "engines": {
     "node": ">=20"
   },
   "license": "MIT",
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "ink": "^7.0.0",
     "parse-torrent": "^11.0.18",
     "react": "^19.2.3",
@@ -31,6 +32,7 @@
   "devDependencies": {
     "@types/node": "^25.0.10",
     "@types/react": "^19.2.9",
+    "ink-testing-library": "^4.0.0",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   }

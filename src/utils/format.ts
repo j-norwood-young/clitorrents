@@ -27,6 +27,12 @@ export function formatEta(ms: number): string {
   return `${h}h ${rm}m`;
 }
 
+export function formatGlobalLimitBps(bps: number): string {
+  if (!Number.isFinite(bps) || bps < 0) return '∞';
+  if (bps === 0) return '0';
+  return formatSpeed(bps);
+}
+
 export function formatRatio(r: number): string {
   if (!Number.isFinite(r)) return '—';
   return r.toFixed(2);

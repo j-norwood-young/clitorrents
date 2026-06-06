@@ -1,83 +1,38 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Box, Text, useInput, usePaste, useApp, useWindowSize } from 'ink';
-import type { TorrentEngine, TorrentSnapshot } from './engine/torrent-engine.js';
+import type { TorrentEngine } from './engine/torrent-engine.js';
 import type { AppConfig } from './config.js';
 import {
   getMagnetForTorrent,
   searchCliflixStyle,
   type CliflixSearchRow,
 } from './search/cliflix-search.js';
-import { Sparkline } from './ui/sparkline.js';
-import { formatBytes, formatEta, formatRatio, formatSpeed } from './utils/format.js';
+import { formatGlobalLimitBps, formatSpeed } from './utils/format.js';
 import { openDownloadPath } from './utils/open-location.js';
-
-type MainTab = 'search' | 'transfers';
-type SearchMode = 'type' | 'pick';
-type View = { kind: 'main' } | { kind: 'detail'; infoHash: string };
-
-const RATIO_PRESETS: (number | null)[] = [null, 0.5, 1, 1.5, 2, 5];
-
-function isTorrentUiPaused(s: TorrentSnapshot): boolean {
-  return s.paused || s.dlPaused;
-}
-
-/** Keep selection index visible in a fixed-height window (no separate scroll state). */
-function listScrollTop(
-  itemCount: number,
-  selectedIndex: number,
-  visibleCount: number
-): number {
-  if (itemCount === 0 || visibleCount <= 0) return 0;
-  const maxScroll = Math.max(0, itemCount - visibleCount);
-  return Math.min(
-    maxScroll,
-    Math.max(0, selectedIndex - visibleCount + 1)
-  );
-}
-
-/**
- * Left column height ≈ leftFix + searchRows (search box + gap + results box).
- * Transfers column ≈ 3 + 2×transferRows (border + title + two lines per torrent).
- */
-function allocateColumnRows(
-  mainHeight: number,
-  leftFix: number,
-  minTransferRows: number
-): { searchRows: number; transferRows: number } {
-  let searchRows = Math.max(0, Math.min(28, mainHeight - leftFix));
-  let transferRows = Math.min(
-    8,
-    Math.max(minTransferRows, Math.floor((mainHeight - 3) / 2))
-  );
-
-  const leftH = (): number => leftFix + searchRows;
-  const rightH = (): number => 3 + 2 * transferRows;
-
-  while (Math.max(leftH(), rightH()) > mainHeight) {
-    if (searchRows > 0 && leftH() >= rightH()) {
-      searchRows -= 1;
-    } else if (transferRows > minTransferRows) {
-      transferRows -= 1;
-    } else if (searchRows > 0) {
-      searchRows -= 1;
-    } else {
-      break;
-    }
-  }
-
-  transferRows = Math.max(minTransferRows, transferRows);
-  while (
-    searchRows > 0 &&
-    Math.max(leftFix + searchRows, 3 + 2 * transferRows) > mainHeight
-  ) {
-    searchRows -= 1;
-  }
-
-  return {
-    searchRows: Math.max(0, searchRows),
-    transferRows: Math.max(minTransferRows, transferRows),
-  };
-}
+import {
+  cyclePreset,
+  cyclePresetBackward,
+  RATIO_PRESETS,
+  SPEED_LIMIT_PRESETS,
+} from './constants.js';
+import { SearchField } from './ui/text-input.js';
+import { ResultsList } from './ui/results-list.js';
+import { TransfersList } from './ui/transfers-list.js';
+import { DetailPane } from './ui/detail-pane.js';
+import { Splash } from './ui/splash.js';
+import {
+  ConfigEditor,
+  CONFIG_FIELDS,
+  applyChoiceSelection,
+  getChoiceIndex,
+  getChoiceOptions,
+  getFieldKind,
+  type ConfigField,
+} from './ui/config-editor.js';
+import { Modal } from './ui/modal.js';
+import type { AppView, FocusPane } from './ui/list-utils.js';
+import { getHotkeyHelp } from './ui/hotkey-help.js';
+import { isTorrentUiPaused } from './ui/list-utils.js';
 
 export function App({
   engine,
@@ -89,23 +44,36 @@ export function App({
   const { exit } = useApp();
   const { columns: width = 80, rows: termRows = 24 } = useWindowSize();
   const [, setTick] = useState(0);
+  const [showSplash, setShowSplash] = useState(true);
 
-  const [config] = useState<AppConfig>(initialConfig);
-  const [view, setView] = useState<View>({ kind: 'main' });
-  const [tab, setTab] = useState<MainTab>('search');
-  const [searchMode, setSearchMode] = useState<SearchMode>('type');
+  const [config, setConfig] = useState<AppConfig>(initialConfig);
+  const [view, setView] = useState<AppView>({ kind: 'main' });
+  const [focus, setFocus] = useState<FocusPane>('search');
   const [query, setQuery] = useState('');
+  const [cursor, setCursor] = useState(0);
   const [results, setResults] = useState<CliflixSearchRow[]>([]);
   const [ri, setRi] = useState(0);
   const [ti, setTi] = useState(0);
   const [busy, setBusy] = useState<'idle' | 'search' | 'add'>('idle');
   const [status, setStatus] = useState('');
+  const [networkState, setNetworkState] = useState<'online' | 'offline'>(
+    engine.isNetworkOnline() ? 'online' : 'offline'
+  );
+
+  const [configField, setConfigField] = useState<ConfigField>('downloadDir');
+  const [configEditing, setConfigEditing] = useState(false);
+  const [configEditText, setConfigEditText] = useState('');
+  const [configPickerOpen, setConfigPickerOpen] = useState(false);
+  const [configPickerIndex, setConfigPickerIndex] = useState(0);
 
   useEffect(() => {
     const onUp = (): void => setTick((x) => x + 1);
+    const onNet = (s: 'online' | 'offline'): void => setNetworkState(s);
     engine.on('update', onUp);
+    engine.on('network', onNet);
     return () => {
       engine.off('update', onUp);
+      engine.off('network', onNet);
     };
   }, [engine]);
 
@@ -113,36 +81,31 @@ export function App({
   const selectedSnap = snaps[Math.min(ti, Math.max(0, snaps.length - 1))];
 
   const runSearch = useCallback(async () => {
-      const cfg = config;
-      if (!query.trim()) {
-        setStatus('Enter a search query.');
-        return;
-      }
-      setBusy('search');
-      setStatus('Searching (torrent-search-api)…');
-      try {
-        const { rows, info } = await searchCliflixStyle(query, {
-          limit: cfg.torrents.limit,
-          activeProvider: cfg.torrents.providers.active,
-          availableProviders: cfg.torrents.providers.available,
-          categoryByProvider: cfg.torrents.categoryByProvider,
-        });
-        setResults(rows);
-        setRi(0);
-        setSearchMode('pick');
-        const detail = info.slice(0, 220);
-        setStatus(
-          rows.length
-            ? `${rows.length} results (${detail})`
-            : `No results — ${detail}`
-        );
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        setStatus(`Search failed: ${msg}`);
-        setResults([]);
-      } finally {
-        setBusy('idle');
-      }
+    if (!query.trim()) {
+      setStatus('Enter a search query.');
+      return;
+    }
+    setBusy('search');
+    setStatus('Searching…');
+    try {
+      const { rows, info } = await searchCliflixStyle(query, {
+        limit: config.torrents.limit,
+        activeProvider: config.torrents.providers.active,
+        availableProviders: config.torrents.providers.available,
+        categoryByProvider: config.torrents.categoryByProvider,
+      });
+      setResults(rows);
+      setRi(0);
+      setFocus('results');
+      const detail = info.slice(0, 220);
+      setStatus(rows.length ? `${rows.length} results (${detail})` : `No results — ${detail}`);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setStatus(`Search failed: ${msg}`);
+      setResults([]);
+    } finally {
+      setBusy('idle');
+    }
   }, [query, config]);
 
   const addSelected = useCallback(async () => {
@@ -156,9 +119,9 @@ export function App({
         setStatus('Could not get magnet link for this result (try another).');
         return;
       }
-      await engine.add(magnet);
+      await engine.add(magnet, { name: row.title });
       setStatus(`Added: ${row.title.slice(0, 60)}`);
-      setTab('transfers');
+      setFocus('transfers');
       const list = engine.getSnapshots();
       setTi(Math.max(0, list.length - 1));
     } catch (e) {
@@ -169,133 +132,152 @@ export function App({
     }
   }, [results, ri, engine]);
 
-  const pasteActive =
-    busy === 'idle' &&
-    view.kind === 'main' &&
-    tab === 'search' &&
-    searchMode === 'type';
+  const applyConfigFromState = useCallback(
+    (next: AppConfig) => {
+      setConfig(next);
+      engine.setConfig(next, { persist: true });
+      if (!next.downloadDir) {
+        engine.setBaseDownloadDir(process.cwd());
+      }
+    },
+    [engine]
+  );
+
+  const saveConfigView = useCallback(() => {
+    applyConfigFromState(config);
+    setView({ kind: 'main' });
+    setStatus('Settings saved.');
+  }, [applyConfigFromState, config]);
+
+  const searchInputActive =
+    busy === 'idle' && view.kind === 'main' && focus === 'search';
 
   usePaste(
     (text) => {
-      if (busy !== 'idle') return;
-      if (view.kind !== 'main') return;
-      if (tab !== 'search' || searchMode !== 'type') return;
+      if (!searchInputActive) return;
       const chunk = text.replace(/[\r\n\u0000]/g, '');
-      if (chunk) setQuery((q) => q + chunk);
+      if (!chunk) return;
+      setQuery((q) => {
+        const before = q.slice(0, cursor);
+        const after = q.slice(cursor);
+        return before + chunk + after;
+      });
+      setCursor((c) => c + chunk.length);
     },
-    { isActive: pasteActive }
+    { isActive: searchInputActive }
   );
 
   useInput(
     (input, key) => {
-      if (key.ctrl && input === 'c') {
+      if (key.ctrl && input === 'q') {
         void engine.destroy().finally(() => exit());
+        return;
+      }
+
+      if (key.ctrl && input === 'o') {
+        if (view.kind !== 'config') {
+          setView({ kind: 'config' });
+          setConfigField('downloadDir');
+          setConfigEditing(false);
+          setConfigEditText('');
+          setConfigPickerOpen(false);
+          setConfigPickerIndex(0);
+        }
+        return;
+      }
+
+      if (view.kind === 'config') {
+        handleConfigInput(input, key);
         return;
       }
 
       if (busy !== 'idle') return;
 
       if (view.kind === 'detail') {
-        const ih = view.infoHash;
-        if (key.escape) {
-          setView({ kind: 'main' });
-          return;
-        }
-        if (input === 'p') {
-          const snap = engine.getSnapshots().find((s) => s.infoHash === ih);
-          if (!snap) return;
-          if (isTorrentUiPaused(snap)) {
-            engine.resumeDownload(ih);
-            setStatus('Resumed');
-          } else {
-            engine.pauseDownload(ih);
-            setStatus('Paused download (piece deselect + pause)');
-          }
-          return;
-        }
-        if (input === 'o') {
-          const t = engine.findTorrent(ih);
-          if (t?.files?.[0]) {
-            openDownloadPath(t.files[0].path);
-          } else if (t?.path) {
-            openDownloadPath(t.path);
-          }
-          return;
-        }
-        if (input === '[') {
-          const cur = engine
-            .getSnapshots()
-            .find((s) => s.infoHash === ih)?.maxRatio;
-          const idx = RATIO_PRESETS.findIndex((r) => r === cur);
-          const nextIdx = idx <= 0 ? RATIO_PRESETS.length - 1 : idx - 1;
-          const next = RATIO_PRESETS[nextIdx];
-          engine.updateTorrentPolicy(ih, { maxRatio: next });
-          setStatus(`maxRatio = ${next ?? 'inherit global'}`);
-          return;
-        }
-        if (input === ']') {
-          const cur = engine
-            .getSnapshots()
-            .find((s) => s.infoHash === ih)?.maxRatio;
-          const idx = RATIO_PRESETS.findIndex((r) => r === cur);
-          const nextIdx = (idx < 0 ? 0 : idx + 1) % RATIO_PRESETS.length;
-          const next = RATIO_PRESETS[nextIdx];
-          engine.updateTorrentPolicy(ih, { maxRatio: next });
-          setStatus(`maxRatio = ${next ?? 'inherit global'}`);
-          return;
-        }
+        handleDetailInput(input, key);
         return;
       }
 
-      if (input === 'q') {
-        void engine.destroy().finally(() => exit());
+      if (key.shift && key.tab) {
+        cycleFocusBackward();
+        return;
+      }
+      if (key.tab && !key.shift) {
+        cycleFocusForward();
         return;
       }
 
-      if (key.tab) {
-        setTab((t) => (t === 'search' ? 'transfers' : 'search'));
-        return;
-      }
-
-      if (tab === 'search') {
-        if (searchMode === 'type') {
-          if (key.return) {
-            void runSearch();
-            return;
-          }
-          if (key.backspace || key.delete) {
-            setQuery((q) => q.slice(0, -1));
-            return;
-          }
-          if (input && input.length === 1 && !key.meta && !key.ctrl) {
-            setQuery((q) => q + input);
-            return;
-          }
-        } else {
-          if (key.upArrow) {
-            setRi((i) => Math.max(0, i - 1));
-            return;
-          }
-          if (key.downArrow) {
-            setRi((i) =>
-              results.length === 0
-                ? 0
-                : Math.min(results.length - 1, i + 1)
-            );
-            return;
-          }
-          if (key.return) {
-            void addSelected();
-            return;
-          }
-          if (input === 'i' || key.escape) {
-            setSearchMode('type');
-            return;
-          }
+      // Quick limit/ratio keys (not while typing in search)
+      if (view.kind === 'main' && focus !== 'search') {
+        if (input === ',') {
+          const next = cyclePresetBackward(SPEED_LIMIT_PRESETS.download, config.globalDownloadLimitBps);
+          const updated = { ...config, globalDownloadLimitBps: next };
+          setConfig(updated);
+          engine.setGlobalLimits(next, config.globalUploadLimitBps, true);
+          setStatus(`Global DL limit: ${next < 0 ? '∞' : formatSpeed(next)}`);
+          return;
+        }
+        if (input === '.') {
+          const next = cyclePreset(SPEED_LIMIT_PRESETS.download, config.globalDownloadLimitBps);
+          const updated = { ...config, globalDownloadLimitBps: next };
+          setConfig(updated);
+          engine.setGlobalLimits(next, config.globalUploadLimitBps, true);
+          setStatus(`Global DL limit: ${next < 0 ? '∞' : formatSpeed(next)}`);
+          return;
+        }
+        if (input === '<') {
+          const next = cyclePresetBackward(SPEED_LIMIT_PRESETS.upload, config.globalUploadLimitBps);
+          const updated = { ...config, globalUploadLimitBps: next };
+          setConfig(updated);
+          engine.setGlobalLimits(config.globalDownloadLimitBps, next, true);
+          setStatus(`Global UL limit: ${next < 0 ? '∞' : formatSpeed(next)}`);
+          return;
+        }
+        if (input === '>') {
+          const next = cyclePreset(SPEED_LIMIT_PRESETS.upload, config.globalUploadLimitBps);
+          const updated = { ...config, globalUploadLimitBps: next };
+          setConfig(updated);
+          engine.setGlobalLimits(config.globalDownloadLimitBps, next, true);
+          setStatus(`Global UL limit: ${next < 0 ? '∞' : formatSpeed(next)}`);
+          return;
+        }
+        if (input === '{') {
+          const next = cyclePresetBackward(RATIO_PRESETS, config.defaultMaxRatio ?? null);
+          const updated = { ...config, defaultMaxRatio: next };
+          setConfig(updated);
+          engine.setDefaultMaxRatio(next, true);
+          setStatus(`Default max ratio: ${next ?? 'unlimited'}`);
+          return;
+        }
+        if (input === '}') {
+          const next = cyclePreset(RATIO_PRESETS, config.defaultMaxRatio ?? null);
+          const updated = { ...config, defaultMaxRatio: next };
+          setConfig(updated);
+          engine.setDefaultMaxRatio(next, true);
+          setStatus(`Default max ratio: ${next ?? 'unlimited'}`);
+          return;
         }
       }
 
-      if (tab === 'transfers') {
+      // Search typing only when search pane is focused
+      if (focus === 'search' && handleSearchInput(input, key)) return;
+
+      if (focus === 'results') {
+        if (key.upArrow) {
+          setRi((i) => Math.max(0, i - 1));
+          return;
+        }
+        if (key.downArrow) {
+          setRi((i) => (results.length === 0 ? 0 : Math.min(results.length - 1, i + 1)));
+          return;
+        }
+        if (key.return) {
+          void addSelected();
+          return;
+        }
+      }
+
+      if (focus === 'transfers') {
         if (key.upArrow) {
           setTi((i) => Math.max(0, i - 1));
           return;
@@ -309,13 +291,7 @@ export function App({
           return;
         }
         if (input === 'p' && selectedSnap) {
-          if (isTorrentUiPaused(selectedSnap)) {
-            engine.resumeDownload(selectedSnap.infoHash);
-            setStatus('Resumed');
-          } else {
-            engine.pauseDownload(selectedSnap.infoHash);
-            setStatus('Paused download (piece deselect + pause)');
-          }
+          togglePause(selectedSnap.infoHash);
           return;
         }
         if (input === 'x' && selectedSnap) {
@@ -334,297 +310,415 @@ export function App({
           openDownloadPath(selectedSnap.downloadPath);
           return;
         }
-      }
-
-      if (input === '/' && tab === 'search') {
-        setSearchMode('type');
-        setTab('search');
+        if ((input === '[' || input === ']') && selectedSnap) {
+          adjustTorrentRatio(selectedSnap.infoHash, input === ']');
+          return;
+        }
       }
     },
-    { isActive: true }
+    { isActive: !showSplash }
   );
+
+  function cycleFocusForward(): void {
+    setFocus((f) => (f === 'search' ? 'results' : f === 'results' ? 'transfers' : 'search'));
+  }
+
+  function cycleFocusBackward(): void {
+    setFocus((f) => (f === 'search' ? 'transfers' : f === 'transfers' ? 'results' : 'search'));
+  }
+
+  function handleSearchInput(
+    input: string,
+    key: {
+      return?: boolean;
+      backspace?: boolean;
+      delete?: boolean;
+      leftArrow?: boolean;
+      rightArrow?: boolean;
+      meta?: boolean;
+      ctrl?: boolean;
+    }
+  ): boolean {
+    if (key.return) {
+      void runSearch();
+      return true;
+    }
+
+    if (key.leftArrow) {
+      setCursor((c) => Math.max(0, c - 1));
+      return true;
+    }
+    if (key.rightArrow) {
+      setCursor((c) => Math.min(query.length, c + 1));
+      return true;
+    }
+
+    if (key.backspace || key.delete) {
+      if (cursor > 0) {
+        setQuery((q) => q.slice(0, cursor - 1) + q.slice(cursor));
+        setCursor((c) => c - 1);
+      }
+      return true;
+    }
+
+    if (input && input.length === 1 && !key.meta && !key.ctrl && !isControlChar(input)) {
+      setQuery((q) => q.slice(0, cursor) + input + q.slice(cursor));
+      setCursor((c) => c + 1);
+      return true;
+    }
+    return false;
+  }
+
+  function isControlChar(ch: string): boolean {
+    const code = ch.charCodeAt(0);
+    return code < 32 || code === 127;
+  }
+
+  function togglePause(infoHash: string): void {
+    const snap = engine.getSnapshots().find((s) => s.infoHash === infoHash);
+    if (!snap) return;
+    if (isTorrentUiPaused(snap)) {
+      engine.resumeDownload(infoHash);
+      setStatus('Resumed');
+    } else {
+      engine.pauseDownload(infoHash);
+      setStatus('Paused download');
+    }
+  }
+
+  function adjustTorrentRatio(infoHash: string, forward: boolean): void {
+    const cur = engine.getSnapshots().find((s) => s.infoHash === infoHash)?.maxRatio;
+    const next = forward
+      ? cyclePreset(RATIO_PRESETS, cur ?? null)
+      : cyclePresetBackward(RATIO_PRESETS, cur ?? null);
+    engine.updateTorrentPolicy(infoHash, { maxRatio: next });
+    setStatus(`maxRatio = ${next ?? 'inherit global'}`);
+  }
+
+  function handleDetailInput(input: string, key: { escape?: boolean }): void {
+    if (view.kind !== 'detail') return;
+    const ih = view.infoHash;
+    if (key.escape) {
+      setView({ kind: 'main' });
+      return;
+    }
+    if (input === 'p') togglePause(ih);
+    if (input === 'o') {
+      const t = engine.findTorrent(ih);
+      if (t?.files?.[0]) openDownloadPath(t.files[0].path);
+      else if (t?.path) openDownloadPath(t.path);
+    }
+    if (input === '[') adjustTorrentRatio(ih, false);
+    if (input === ']') adjustTorrentRatio(ih, true);
+  }
+
+  function handleConfigInput(
+    input: string,
+    key: {
+      escape?: boolean;
+      return?: boolean;
+      upArrow?: boolean;
+      downArrow?: boolean;
+      backspace?: boolean;
+      delete?: boolean;
+    }
+  ): void {
+    if (key.escape) {
+      if (configPickerOpen) {
+        setConfigPickerOpen(false);
+        return;
+      }
+      if (configEditing) {
+        setConfigEditing(false);
+        setConfigEditText('');
+        return;
+      }
+      saveConfigView();
+      return;
+    }
+
+    const fieldIdx = CONFIG_FIELDS.indexOf(configField);
+    const kind = getFieldKind(configField);
+
+    if (configPickerOpen) {
+      const options = getChoiceOptions(configField, config);
+      if (key.upArrow) {
+        setConfigPickerIndex((i) => Math.max(0, i - 1));
+        return;
+      }
+      if (key.downArrow) {
+        setConfigPickerIndex((i) => Math.min(options.length - 1, i + 1));
+        return;
+      }
+      if (key.return) {
+        const selected = options[configPickerIndex];
+        if (selected) {
+          const next = applyChoiceSelection(configField, config, selected);
+          applyFieldUpdate(next);
+        }
+        setConfigPickerOpen(false);
+        return;
+      }
+      return;
+    }
+
+    if (key.upArrow && !configEditing) {
+      setConfigField(CONFIG_FIELDS[Math.max(0, fieldIdx - 1)]!);
+      return;
+    }
+    if (key.downArrow && !configEditing) {
+      setConfigField(CONFIG_FIELDS[Math.min(CONFIG_FIELDS.length - 1, fieldIdx + 1)]!);
+      return;
+    }
+
+    if (input === ' ' && kind === 'boolean' && !configEditing) {
+      const next = {
+        ...config,
+        categories: {
+          ...config.categories,
+          enabled: !(config.categories?.enabled ?? false),
+        },
+      };
+      applyFieldUpdate(next);
+      return;
+    }
+
+    if (key.return) {
+      if (configEditing) {
+        commitConfigField(configField, configEditText);
+        setConfigEditing(false);
+        setConfigEditText('');
+        return;
+      }
+      if (kind === 'choice') {
+        setConfigPickerIndex(getChoiceIndex(configField, config));
+        setConfigPickerOpen(true);
+        return;
+      }
+      if (kind === 'text') {
+        setConfigEditing(true);
+        setConfigEditText(getFieldText(config, configField));
+        return;
+      }
+      return;
+    }
+
+    if (configEditing) {
+      if (key.backspace || key.delete) {
+        setConfigEditText((t) => t.slice(0, -1));
+        return;
+      }
+      if (input && input.length === 1 && !isControlChar(input)) {
+        setConfigEditText((t) => t + input);
+      }
+    }
+  }
+
+  function applyFieldUpdate(next: AppConfig): void {
+    setConfig(next);
+    engine.setConfig(next);
+    if (!next.downloadDir) engine.setBaseDownloadDir(process.cwd());
+  }
+
+  function getFieldText(cfg: AppConfig, field: ConfigField): string {
+    switch (field) {
+      case 'downloadDir':
+        return cfg.downloadDir ?? '';
+      case 'activeProvider':
+        return cfg.torrents.providers.active;
+      case 'defaultMaxRatio':
+        return cfg.defaultMaxRatio == null ? '' : String(cfg.defaultMaxRatio);
+      case 'categoryTv':
+        return cfg.categories?.tv ?? '';
+      case 'categoryMovies':
+        return cfg.categories?.movies ?? '';
+      case 'categoryMusic':
+        return cfg.categories?.music ?? '';
+      default:
+        return '';
+    }
+  }
+
+  function commitConfigField(field: ConfigField, text: string): void {
+    const next = { ...config };
+    switch (field) {
+      case 'downloadDir':
+        next.downloadDir = text.trim() === '' ? null : text.trim();
+        break;
+      case 'activeProvider':
+        next.torrents = {
+          ...next.torrents,
+          providers: { ...next.torrents.providers, active: text.trim() || next.torrents.providers.active },
+        };
+        break;
+      case 'defaultMaxRatio':
+        next.defaultMaxRatio = text.trim() === '' ? null : Number(text.trim());
+        break;
+      case 'categoryTv':
+        next.categories = { ...next.categories, enabled: next.categories?.enabled ?? false, tv: text.trim() || undefined };
+        break;
+      case 'categoryMovies':
+        next.categories = { ...next.categories, enabled: next.categories?.enabled ?? false, movies: text.trim() || undefined };
+        break;
+      case 'categoryMusic':
+        next.categories = { ...next.categories, enabled: next.categories?.enabled ?? false, music: text.trim() || undefined };
+        break;
+      default:
+        break;
+    }
+    applyFieldUpdate(next);
+  }
+
+  if (showSplash) {
+    return <Splash onDone={() => setShowSplash(false)} />;
+  }
 
   const sparkW = Math.max(8, Math.min(32, Math.floor(width / 4)));
   const searchColW = Math.floor(width * 0.48);
   const titleMax = Math.max(16, searchColW - 6);
-
-  const headerReserve = 2;
+  const headerReserve = 3;
   const footerReserve = termRows < 22 ? 3 : 4;
-  const mainContentHeight = Math.max(4, termRows - headerReserve - footerReserve);
-  const searchTier: 'full' | 'compact' | 'mini' =
-    mainContentHeight < 13 ? 'mini' : mainContentHeight < 20 ? 'compact' : 'full';
-  const leftFix =
-    searchTier === 'mini' ? 7 : searchTier === 'compact' ? 8 : 9;
-  const minTransferRows = snaps.length > 0 ? 1 : 0;
-  const { searchRows: searchResultVisible, transferRows: transferVisible } =
-    allocateColumnRows(mainContentHeight, leftFix, minTransferRows);
+  const mainContentHeight = Math.max(6, termRows - headerReserve - footerReserve);
+  const resultsVisible = Math.max(3, Math.floor(mainContentHeight * 0.45));
+  const transfersVisible = Math.max(2, Math.floor(mainContentHeight * 0.35));
 
-  const searchRowsShown =
-    results.length === 0 ? 0 : Math.max(1, searchResultVisible);
-  const searchScrollTop = listScrollTop(results.length, ri, searchRowsShown);
-  const searchWindowEnd = Math.min(
-    results.length,
-    searchScrollTop + searchRowsShown
-  );
-  const searchResultsRangeLabel =
-    results.length === 0
-      ? 'Results'
-      : `Results ${searchScrollTop + 1}-${searchWindowEnd} of ${results.length}`;
+  const detailPeerLines = Math.max(2, Math.min(6, mainContentHeight - 12));
 
-  const transferRowsShown =
-    snaps.length === 0 ? 0 : Math.max(1, transferVisible);
-  const transferScrollTop = listScrollTop(snaps.length, ti, transferRowsShown);
-  const transferWindowEnd = Math.min(
-    snaps.length,
-    transferScrollTop + transferRowsShown
-  );
+  const modalOpen = view.kind !== 'main';
+  const configPickerOptionCount = configPickerOpen
+    ? getChoiceOptions(configField, config).length
+    : 0;
+  const configModalHeight = configPickerOpen
+    ? Math.min(mainContentHeight - 2, 12 + configPickerOptionCount)
+    : Math.min(mainContentHeight - 2, 16);
+  const detailModalHeight = Math.min(mainContentHeight - 2, 10 + detailPeerLines);
 
-  const detailPeerLines =
-    view.kind === 'detail'
-      ? Math.max(3, termRows - headerReserve - footerReserve - 12)
-      : 12;
+  const hotkeyHelp = getHotkeyHelp({
+    view,
+    focus,
+    configEditing,
+    configPickerOpen,
+    compact: termRows < 22,
+  });
 
   return (
     <Box height={termRows} flexDirection="column" overflow="hidden">
-      <Box marginBottom={1}>
-        <Text bold color="cyan">
-          clitorrents
-        </Text>
-        <Text>
+      <Box marginBottom={0} flexDirection="column">
+        <Text dimColor={modalOpen}>
+          <Text bold color="cyan">
+            clitorrents
+          </Text>
           {' '}
-          | search: {config.torrents.providers.active} | DL{' '}
+          | {config.torrents.providers.active} | save: {engine.getBaseDownloadDir()}
+        </Text>
+        <Text dimColor={modalOpen}>
+          ratio {config.defaultMaxRatio ?? '∞'} | cap DL{' '}
+          {formatGlobalLimitBps(config.globalDownloadLimitBps)} UL{' '}
+          {formatGlobalLimitBps(config.globalUploadLimitBps)} | live DL{' '}
           {formatSpeed(engine.getClientDownloadSpeed())} UL{' '}
-          {formatSpeed(engine.getClientUploadSpeed())} | cfg: global limits{' '}
-          {config.globalDownloadLimitBps < 0
-            ? '∞'
-            : formatSpeed(config.globalDownloadLimitBps)}{' '}
-          /{' '}
-          {config.globalUploadLimitBps < 0
-            ? '∞'
-            : formatSpeed(config.globalUploadLimitBps)}
+          {formatSpeed(engine.getClientUploadSpeed())}
         </Text>
       </Box>
 
-      {view.kind === 'detail' && (
-        <DetailPane
-          engine={engine}
-          infoHash={view.infoHash}
-          width={width}
-          sparkW={sparkW}
-          maxPeerLines={detailPeerLines}
-        />
-      )}
+      {networkState === 'offline' ? (
+        <Text bold color="red">
+          Offline — torrents paused, waiting for network…
+        </Text>
+      ) : null}
 
-      {view.kind === 'main' && (
-        <Box flexDirection="row">
+      <Box
+        position="relative"
+        flexGrow={1}
+        height={mainContentHeight}
+        flexDirection="column"
+      >
+        <Box flexDirection="row" flexGrow={1}>
           <Box width={searchColW} flexDirection="column">
             <Box
-              flexDirection="column"
               borderStyle="single"
-              borderColor={tab === 'search' ? 'cyan' : 'gray'}
+              borderColor={!modalOpen && focus === 'search' ? 'cyan' : 'gray'}
               paddingX={1}
             >
-              {searchTier === 'mini' ? (
-                <Text bold={tab === 'search'}>
-                  Search {tab === 'search' ? '*' : ''}{' '}
-                  <Text dimColor>&gt; </Text>
-                  {query}
-                  {searchMode === 'type' ? '▌' : ''}
-                </Text>
-              ) : (
-                <>
-                  <Text bold={tab === 'search'}>
-                    Search {tab === 'search' ? '*' : ''}
-                  </Text>
-                  {searchTier === 'full' ? (
-                    <Text dimColor>
-                      {searchMode === 'type'
-                        ? '(type query, Enter)'
-                        : '(arrows, Enter=add, i=edit query)'}
-                    </Text>
-                  ) : null}
-                  <Text>
-                    <Text dimColor>&gt; </Text>
-                    {query}
-                    {searchMode === 'type' ? '▌' : ''}
-                  </Text>
-                </>
-              )}
+              <SearchField
+                value={query}
+                cursor={cursor}
+                focused={!modalOpen && focus === 'search'}
+                dimmed={modalOpen}
+              />
             </Box>
-
-            <Box
-              marginTop={1}
-              flexDirection="column"
-              borderStyle="single"
-              borderColor={tab === 'search' ? 'cyan' : 'gray'}
-              paddingX={1}
-            >
-              <Text bold dimColor>
-                {searchResultsRangeLabel}
-              </Text>
-              {results.length === 0 ? (
-                <Text dimColor>
-                  {searchMode === 'pick'
-                    ? 'No results for this query'
-                    : 'Run a search (Enter)'}
-                </Text>
-              ) : (
-                results
-                  .slice(searchScrollTop, searchScrollTop + searchRowsShown)
-                  .map((r, j) => {
-                    const i = searchScrollTop + j;
-                    return (
-                      <Text
-                        key={`${i}-${r.title.slice(0, 48)}`}
-                        inverse={searchMode === 'pick' && i === ri}
-                      >
-                        {r.title.slice(0, titleMax)}{' '}
-                        <Text dimColor>
-                          {r.seeders ?? '?'}S{' '}
-                          {typeof r.size === 'string'
-                            ? r.size
-                            : typeof r.size === 'number'
-                              ? formatBytes(r.size)
-                              : '?'}
-                        </Text>
-                      </Text>
-                    );
-                  })
-              )}
-            </Box>
+            <ResultsList
+              results={results}
+              selectedIndex={ri}
+              focused={!modalOpen && focus === 'results'}
+              dimmed={modalOpen}
+              visibleRows={resultsVisible}
+              titleMax={titleMax}
+            />
           </Box>
-
-          <Box width={Math.floor(width * 0.52)} flexDirection="column" marginLeft={1}>
-            <Box
-              flexDirection="column"
-              borderStyle="single"
-              borderColor={tab === 'transfers' ? 'green' : 'gray'}
-              paddingX={1}
-            >
-              <Text bold={tab === 'transfers'}>
-                Transfers {tab === 'transfers' ? '*' : ''}
-              </Text>
-              {snaps.length === 0 ? (
-                <Text dimColor>No active torrents</Text>
-              ) : (
-                snaps
-                  .slice(transferScrollTop, transferWindowEnd)
-                  .map((s, j) => {
-                  const i = transferScrollTop + j;
-                  const paused = isTorrentUiPaused(s);
-                  return (
-                  <Box key={s.infoHash} flexDirection="column">
-                    <Text inverse={tab === 'transfers' && i === ti}>
-                      {paused ? (
-                        <>
-                          <Text bold color="yellow">
-                            PAUSED{' '}
-                          </Text>
-                          <Text>
-                            {s.name.slice(0, 34)} {(s.progress * 100).toFixed(1)}%
-                          </Text>
-                        </>
-                      ) : (
-                        `${s.name.slice(0, 40)} ${(s.progress * 100).toFixed(1)}% ${formatSpeed(s.downloadSpeed)} ETA ${formatEta(s.timeRemaining)}`
-                      )}
-                    </Text>
-                    <Text dimColor>
-                      {'  '}
-                      <Sparkline values={s.history} width={sparkW} /> peers {s.numPeers}
-                    </Text>
-                  </Box>
-                  );
-                })
-              )}
-            </Box>
+          <Box width={Math.floor(width * 0.52)} marginLeft={1}>
+            <TransfersList
+              snaps={snaps}
+              selectedIndex={ti}
+              focused={!modalOpen && focus === 'transfers'}
+              dimmed={modalOpen}
+              visibleRows={transfersVisible}
+              sparkW={sparkW}
+            />
           </Box>
         </Box>
-      )}
+
+        {view.kind === 'config' ? (
+          <Modal
+            title="Settings"
+            areaWidth={width}
+            areaHeight={mainContentHeight}
+            modalWidth={Math.min(width - 4, 72)}
+            modalHeight={configModalHeight}
+            borderColor="magenta"
+          >
+            <ConfigEditor
+              config={config}
+              selectedField={configField}
+              editing={configEditing}
+              editingText={configEditText}
+              pickerOpen={configPickerOpen}
+              pickerIndex={configPickerIndex}
+              baseDirLive={engine.getBaseDownloadDir()}
+            />
+          </Modal>
+        ) : null}
+
+        {view.kind === 'detail' ? (
+          <Modal
+            title="Torrent detail"
+            areaWidth={width}
+            areaHeight={mainContentHeight}
+            modalWidth={Math.min(width - 4, 76)}
+            modalHeight={detailModalHeight}
+            borderColor="yellow"
+          >
+            <DetailPane
+              engine={engine}
+              infoHash={view.infoHash}
+              width={Math.min(width - 8, 72)}
+              sparkW={sparkW}
+              maxPeerLines={detailPeerLines}
+            />
+          </Modal>
+        ) : null}
+      </Box>
 
       <Box marginTop={1} flexDirection="column">
         <Text dimColor>{status}</Text>
-        {termRows < 22 ? (
-          <Text dimColor>
-            Tab | Enter | p | o | x/X | [ ] | q | cfg ~/.config/clitorrents/config.json
-          </Text>
-        ) : (
-          <Text dimColor>
-            Tab switch pane | Enter detail / add | p pause/resume | o open | x remove (keep
-            files) X wipe | [ ] ratio (detail) | q quit | edit ~/.config/clitorrents/config.json
-            for providers
-          </Text>
-        )}
-      </Box>
-    </Box>
-  );
-}
-
-function DetailPane({
-  engine,
-  infoHash,
-  width,
-  sparkW,
-  maxPeerLines = 12,
-}: {
-  engine: TorrentEngine;
-  infoHash: string;
-  width: number;
-  sparkW: number;
-  maxPeerLines?: number;
-}): React.ReactNode {
-  const s = engine.getSnapshots().find((x) => x.infoHash === infoHash);
-  const peers = engine.getPeers(infoHash);
-  const paused = s ? isTorrentUiPaused(s) : false;
-  if (!s) {
-    return (
-      <Box marginBottom={1}>
-        <Text color="red">Torrent not found (finished or removed). Press Esc.</Text>
-      </Box>
-    );
-  }
-  return (
-    <Box
-      flexDirection="column"
-      borderStyle="double"
-      borderColor="yellow"
-      paddingX={1}
-      marginBottom={1}
-    >
-      <Text bold color="yellow">
-        Torrent detail — Esc back
-      </Text>
-      <Text>{s.name}</Text>
-      <Text>
-        Progress {((s.progress ?? 0) * 100).toFixed(1)}% | DL {formatSpeed(s.downloadSpeed ?? 0)} | UL{' '}
-        {formatSpeed(s.uploadSpeed ?? 0)} | ETA {formatEta(s.timeRemaining ?? 0)}
-        {paused ? (
-          <Text bold color="yellow">
-            {' '}
-            | Paused
+        {view.kind === 'config' ? (
+          <Text>
+            ratio {config.defaultMaxRatio ?? '∞'} · DL cap{' '}
+            {formatGlobalLimitBps(config.globalDownloadLimitBps)} · UL cap{' '}
+            {formatGlobalLimitBps(config.globalUploadLimitBps)}
           </Text>
         ) : null}
-      </Text>
-      <Text>
-        Peers {s.numPeers} | Ratio {formatRatio(s.ratio ?? 0)} | maxRatio{' '}
-        {s.maxRatio ?? 'inherit global'} | maxUp{' '}
-        {s.maxUploadBytes == null ? 'inherit global' : formatBytes(s.maxUploadBytes)}
-      </Text>
-      <Text dimColor>Path {s.downloadPath}</Text>
-      <Box marginY={1}>
-        <Sparkline values={s.history ?? []} width={sparkW} />
+        <Text dimColor>{hotkeyHelp}</Text>
       </Box>
-      <Text bold>Peers ({peers.length})</Text>
-      {peers
-        .slice(
-          0,
-          Math.min(maxPeerLines, width > 100 ? 20 : 10)
-        )
-        .map((p) => (
-        <Text key={p.key}>
-          {p.remoteAddress}:{p.remotePort} ↓{formatSpeed(p.downSpeed)} ↑
-          {formatSpeed(p.upSpeed)}
-        </Text>
-      ))}
     </Box>
   );
 }
