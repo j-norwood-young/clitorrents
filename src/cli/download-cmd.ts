@@ -2,6 +2,7 @@ import type { AppConfig } from '../config.js';
 import { getMagnetForTorrent, searchCliflixStyle } from '../search/cliflix-search.js';
 import { resolveTorrentId } from '../search/resolve-torrent-id.js';
 import type { TorrentEngine } from '../engine/torrent-engine.js';
+import { formatCategoryLabel, planDownloadLocation } from '../media/classify.js';
 import { formatBytes, formatEta, formatSpeed } from '../utils/format.js';
 
 export type DownloadCommandOpts = {
@@ -69,8 +70,14 @@ export async function runDownloadCommand(
     magnetOrId = magnet;
   }
 
+  const plan = planDownloadLocation(displayName, config, engine.getBaseDownloadDir());
+  const dir = opts.dir ?? plan.dir;
+
   console.log(`Adding: ${displayName}`);
-  console.log(`Save to: ${opts.dir ?? engine.getBaseDownloadDir()}`);
+  if (config.categories?.enabled) {
+    console.log(`Category: ${formatCategoryLabel(plan.category)}`);
+  }
+  console.log(`Save to: ${dir}`);
 
   await engine.add(magnetOrId, {
     name: displayName,

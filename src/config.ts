@@ -40,6 +40,8 @@ export const CategoriesConfigSchema = z.object({
   tv: z.string().optional(),
   movies: z.string().optional(),
   music: z.string().optional(),
+  /** Optional folder for names that do not match TV/movie/music heuristics */
+  unknown: z.string().optional(),
 });
 
 export type CategoriesConfig = z.infer<typeof CategoriesConfigSchema>;

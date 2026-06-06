@@ -70,8 +70,21 @@ You can also edit settings in the TUI with Ctrl+O.
 
 - **Default:** current working directory (`process.cwd()`)
 - **Permanent override:** set `downloadDir` in `config.json` (applies whenever you run clitorrents)
-- **Category routing:** enable `categories` to send TV, movies, and music to separate folders (detected from torrent names at add time)
+- **Category routing:** enable `categories` to send TV, movies, and music to separate folders (detected from torrent names at add time). The results list previews the route before you add. Turning routing on in settings auto-fills `TV`, `Movies`, and `Music` subfolders under your save directory.
 - Destination is fixed when a torrent is added; changing `downloadDir` only affects new downloads
+
+### Category detection (name heuristics)
+
+Detection runs on the torrent title at add time (TV is checked first, then music, then movies):
+
+| Category | Typical patterns |
+|----------|------------------|
+| **TV** | `S01E02`, `1x02`, `Season N`, `complete series`, `mini series` |
+| **Music** | `FLAC`, `MP3`, `320kbps`, `album`, `discography`, `audiobook`, `.flac`/`.mp3` extensions |
+| **Movies** | `(2024)` with quality tags, `BluRay`/`WEB-DL`/`remux`, `movie`, `documentary` |
+| **Other** | Anything else — optional `categories.unknown` dir, otherwise the base save dir |
+
+Use `categories.unknown` for a catch-all inbox (software, games, etc.) without mislabeling them as movies.
 
 ### Config fields
 
@@ -80,6 +93,7 @@ You can also edit settings in the TUI with Ctrl+O.
 | `downloadDir` | Permanent save dir override (`null` = use cwd) |
 | `categories.enabled` | Route TV/movies/music to separate dirs |
 | `categories.tv` / `movies` / `music` | Category directory paths |
+| `categories.unknown` | Optional folder for unmatched titles |
 | `torrents.limit` | Max results returned by provider search |
 | `torrents.providers.active` | Provider used first (fallback starts here) |
 | `torrents.providers.available` | Provider fallback order list |

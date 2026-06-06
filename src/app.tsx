@@ -7,7 +7,8 @@ import {
   searchCliflixStyle,
   type CliflixSearchRow,
 } from './search/cliflix-search.js';
-import { formatGlobalLimitBps, formatSpeed } from './utils/format.js';
+import { formatGlobalLimitBps, formatSpeed, shortenPath } from './utils/format.js';
+import { defaultCategoryPaths, formatCategoryLabel, planDownloadLocation } from './media/classify.js';
 import { openDownloadPath } from './utils/open-location.js';
 import {
   cyclePreset,
@@ -120,7 +121,13 @@ export function App({
         return;
       }
       await engine.add(magnet, { name: row.title });
-      setStatus(`Added: ${row.title.slice(0, 60)}`);
+      const plan = planDownloadLocation(row.title, config, engine.getBaseDownloadDir());
+      const cat = config.categories?.enabled ? formatCategoryLabel(plan.category) : null;
+      setStatus(
+        cat
+          ? `Added (${cat}) → ${shortenPath(plan.dir, 52)}`
+          : `Added → ${shortenPath(plan.dir, 52)}`
+      );
       setFocus('transfers');
       const list = engine.getSnapshots();
       setTi(Math.max(0, list.length - 1));
@@ -130,7 +137,7 @@ export function App({
     } finally {
       setBusy('idle');
     }
-  }, [results, ri, engine]);
+  }, [results, ri, engine, config]);
 
   const applyConfigFromState = useCallback(
     (next: AppConfig) => {
@@ -472,14 +479,26 @@ export function App({
     }
 
     if (input === ' ' && kind === 'boolean' && !configEditing) {
+      const enabling = !(config.categories?.enabled ?? false);
+      const base = engine.getBaseDownloadDir();
+      const defaults = defaultCategoryPaths(base);
       const next = {
         ...config,
         categories: {
           ...config.categories,
-          enabled: !(config.categories?.enabled ?? false),
+          enabled: enabling,
+          tv: config.categories?.tv ?? (enabling ? defaults.tv : undefined),
+          movies: config.categories?.movies ?? (enabling ? defaults.movies : undefined),
+          music: config.categories?.music ?? (enabling ? defaults.music : undefined),
+          unknown: config.categories?.unknown,
         },
       };
       applyFieldUpdate(next);
+      setStatus(
+        enabling
+          ? `Category routing on — TV/Movies/Music under ${shortenPath(base, 40)}`
+          : 'Category routing off'
+      );
       return;
     }
 
@@ -534,6 +553,8 @@ export function App({
         return cfg.categories?.movies ?? '';
       case 'categoryMusic':
         return cfg.categories?.music ?? '';
+      case 'categoryUnknown':
+        return cfg.categories?.unknown ?? '';
       default:
         return '';
     }
@@ -562,6 +583,9 @@ export function App({
         break;
       case 'categoryMusic':
         next.categories = { ...next.categories, enabled: next.categories?.enabled ?? false, music: text.trim() || undefined };
+        break;
+      case 'categoryUnknown':
+        next.categories = { ...next.categories, enabled: next.categories?.enabled ?? false, unknown: text.trim() || undefined };
         break;
       default:
         break;
@@ -610,6 +634,12 @@ export function App({
           </Text>
           {' '}
           | {config.torrents.providers.active} | save: {engine.getBaseDownloadDir()}
+          {config.categories?.enabled ? (
+            <>
+              {' '}
+              | routes: TV/movies/music
+            </>
+          ) : null}
         </Text>
         <Text dimColor={modalOpen}>
           ratio {config.defaultMaxRatio ?? '∞'} | cap DL{' '}
@@ -653,6 +683,8 @@ export function App({
               dimmed={modalOpen}
               visibleRows={resultsVisible}
               titleMax={titleMax}
+              config={config}
+              baseDir={engine.getBaseDownloadDir()}
             />
           </Box>
           <Box width={Math.floor(width * 0.52)} marginLeft={1}>

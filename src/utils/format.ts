@@ -33,6 +33,11 @@ export function formatGlobalLimitBps(bps: number): string {
   return formatSpeed(bps);
 }
 
+export function shortenPath(filePath: string, max = 32): string {
+  if (filePath.length <= max) return filePath;
+  return '…' + filePath.slice(-(max - 1));
+}
+
 export function formatRatio(r: number): string {
   if (!Number.isFinite(r)) return '—';
   return r.toFixed(2);

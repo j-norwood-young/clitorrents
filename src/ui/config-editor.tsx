@@ -16,6 +16,7 @@ export type ConfigField =
   | 'categoryTv'
   | 'categoryMovies'
   | 'categoryMusic'
+  | 'categoryUnknown'
   | 'onReachLimit';
 
 export type ConfigFieldKind = 'text' | 'boolean' | 'choice';
@@ -30,6 +31,7 @@ const FIELDS: ConfigField[] = [
   'categoryTv',
   'categoryMovies',
   'categoryMusic',
+  'categoryUnknown',
   'onReachLimit',
 ];
 
@@ -249,6 +251,8 @@ function displayValue(
       return config.categories?.movies ?? '(unset)';
     case 'categoryMusic':
       return config.categories?.music ?? '(unset)';
+    case 'categoryUnknown':
+      return config.categories?.unknown ?? '(unset = base dir)';
     case 'onReachLimit':
       return config.onReachLimit;
     default:
@@ -267,6 +271,7 @@ function fieldLabel(field: ConfigField): string {
     categoryTv: 'TV dir',
     categoryMovies: 'Movies dir',
     categoryMusic: 'Music dir',
+    categoryUnknown: 'Other dir',
     onReachLimit: 'On reach limit',
   };
   return labels[field];

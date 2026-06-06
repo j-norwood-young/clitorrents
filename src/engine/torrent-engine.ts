@@ -13,7 +13,7 @@ import {
   saveTorrentOverrides,
   setTorrentOverride,
 } from '../config.js';
-import { classifyMedia, resolveDownloadDir } from '../media/classify.js';
+import { planDownloadLocation } from '../media/classify.js';
 import { ConnectivityMonitor } from '../net/connectivity.js';
 
 const HISTORY_LEN = 48;
@@ -313,12 +313,13 @@ export class TorrentEngine extends EventEmitter {
 
   async add(torrentId: string | Uint8Array, options: AddTorrentOptions = {}): Promise<void> {
     const name = options.name ?? '';
-    const dir =
-      options.downloadDir ??
-      (name ? resolveDownloadDir(name, this.config, this.baseDownloadDir) : this.baseDownloadDir);
+    const plan = name
+      ? planDownloadLocation(name, this.config, this.baseDownloadDir)
+      : { category: 'unknown' as const, dir: this.baseDownloadDir };
+    const dir = options.downloadDir ?? plan.dir;
     fs.mkdirSync(dir, { recursive: true });
 
-    const mediaCategory = name ? classifyMedia(name) : undefined;
+    const mediaCategory = name ? plan.category : undefined;
 
     const tor = this.client.add(torrentId as unknown, { path: dir });
 
