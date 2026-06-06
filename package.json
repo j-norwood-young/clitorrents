@@ -23,7 +23,8 @@
     "tui",
     "cli",
     "webtorrent",
-    "terminal"
+    "terminal",
+    "mcp"
   ],
   "scripts": {
     "build": "tsc",

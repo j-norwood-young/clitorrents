@@ -1,9 +1,20 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import type { TorrentSnapshot } from '../engine/torrent-engine.js';
-import { formatEta, formatSpeed } from '../utils/format.js';
+import { formatEta, formatSpeed, formatTransferProgress } from '../utils/format.js';
 import { Sparkline } from './sparkline.js';
-import { isTorrentUiPaused, listScrollTop } from './list-utils.js';
+import {
+  formatTransferStatusBadge,
+  isTorrentUiPaused,
+  listScrollTop,
+  transferUiStatus,
+} from './list-utils.js';
+
+function statusBadgeColor(s: TorrentSnapshot): 'green' | 'yellow' {
+  const status = transferUiStatus(s);
+  if (status === 'paused') return 'yellow';
+  return 'green';
+}
 
 export function TransfersList({
   snaps,
@@ -40,36 +51,46 @@ export function TransfersList({
       ) : (
         snaps.slice(scrollTop, windowEnd).map((s, j) => {
           const i = scrollTop + j;
+          const status = transferUiStatus(s);
           const paused = isTorrentUiPaused(s);
           const selected = focused && !dimmed && i === selectedIndex;
+          const badge = formatTransferStatusBadge(s);
+          const sizeLabel = formatTransferProgress(s.downloaded, s.length);
+          const titleMax = Math.max(14, 42 - sizeLabel.length);
           const pathShort =
             s.downloadPath.length > 42
               ? '…' + s.downloadPath.slice(-41)
               : s.downloadPath;
+          const statsLine =
+            status === 'done'
+              ? 'Complete'
+              : paused
+                ? 'Paused'
+                : `${formatSpeed(s.downloadSpeed)} ETA ${formatEta(s.timeRemaining)}`;
           return (
             <Box key={s.infoHash} flexDirection="column" marginBottom={0}>
-              <Text inverse={selected} dimColor={dimmed && !selected}>
-                {paused ? (
-                  <>
-                    <Text bold color="yellow">
-                      PAUSED{' '}
-                    </Text>
-                    <Text>
-                      {s.name.slice(0, 32)} {(s.progress * 100).toFixed(1)}%
-                    </Text>
-                  </>
-                ) : (
-                  `${s.name.slice(0, 36)} ${(s.progress * 100).toFixed(1)}% ${formatSpeed(s.downloadSpeed)} ETA ${formatEta(s.timeRemaining)}`
-                )}
-              </Text>
+              <Box flexDirection="row">
+                <Text color={statusBadgeColor(s)} bold={paused}>
+                  {badge}{' '}
+                </Text>
+                <Text inverse={selected} dimColor={dimmed && !selected} wrap="truncate">
+                  {s.name.slice(0, titleMax)} {sizeLabel}
+                </Text>
+              </Box>
               <Text dimColor>
                 {'  → '}
                 {pathShort}
                 {s.mediaCategory ? ` [${s.mediaCategory}]` : ''}
               </Text>
-              <Text dimColor={dimmed}>
+              <Text dimColor={dimmed} color={paused ? 'yellow' : undefined}>
                 {'  '}
-                <Sparkline values={s.history} width={sparkW} /> peers {s.numPeers}
+                {paused ? (
+                  <>Paused · peers {s.numPeers}</>
+                ) : (
+                  <>
+                    <Sparkline values={s.history} width={sparkW} /> peers {s.numPeers} · {statsLine}
+                  </>
+                )}
               </Text>
             </Box>
           );

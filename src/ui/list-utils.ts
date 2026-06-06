@@ -54,3 +54,28 @@ export type AppView =
 export function isTorrentUiPaused(s: { paused: boolean; dlPaused: boolean }): boolean {
   return s.paused || s.dlPaused;
 }
+
+export type TransferUiStatus = 'downloading' | 'paused' | 'done';
+
+export function transferUiStatus(s: {
+  done: boolean;
+  paused: boolean;
+  dlPaused: boolean;
+}): TransferUiStatus {
+  if (s.done) return 'done';
+  if (isTorrentUiPaused(s)) return 'paused';
+  return 'downloading';
+}
+
+/** Status badge for transfers list rows (matches results list semantics). */
+export function formatTransferStatusBadge(s: {
+  done: boolean;
+  paused: boolean;
+  dlPaused: boolean;
+  progress: number;
+}): string {
+  const status = transferUiStatus(s);
+  if (status === 'done') return '[✓]';
+  if (status === 'paused') return '[‖]';
+  return `[↓${Math.round(s.progress * 100)}%]`;
+}

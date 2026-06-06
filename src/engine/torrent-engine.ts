@@ -7,6 +7,7 @@ import type { Torrent } from 'webtorrent';
 import type { AppConfig, SessionTorrent, TorrentOverridesFile } from '../config.js';
 import {
   getMergedTorrentPolicy,
+  getSessionMtimeMs,
   loadSession,
   loadTorrentOverrides,
   resolveBaseDir,
@@ -17,11 +18,13 @@ import {
 } from '../config.js';
 import { planDownloadLocation } from '../media/classify.js';
 import { ConnectivityMonitor } from '../net/connectivity.js';
+import { planSessionSync } from './session-sync.js';
 import { infoHashFromMagnet, sessionKeyForMagnet, whenTorrentReady } from './session-utils.js';
 
 const HISTORY_LEN = 48;
 const TICK_MS_ONLINE = 400;
 const TICK_MS_OFFLINE = 5000;
+const SESSION_SYNC_MS = 1500;
 
 export type PeerRow = {
   key: string;
@@ -125,12 +128,16 @@ export class TorrentEngine extends EventEmitter {
   private meta = new Map<string, TorrentMeta>();
   private sessionByHash = new Map<string, SessionTorrent>();
   private tickHandle: ReturnType<typeof setInterval> | null = null;
+  private sessionSyncHandle: ReturnType<typeof setInterval> | null = null;
   private tickMs = TICK_MS_ONLINE;
   private connectivity: ConnectivityMonitor;
   private networkOnline = true;
   private persistSessionEnabled: boolean;
   /** Info hashes currently being added (before client.torrents is updated). */
   private pendingAddHashes = new Set<string>();
+  private lastSyncedSessionMtime: number | null = null;
+  private syncingFromDisk = false;
+  private sessionSyncInFlight = false;
 
   constructor(
     config: AppConfig,
@@ -154,7 +161,9 @@ export class TorrentEngine extends EventEmitter {
     this.connectivity.on('offline', () => this.handleOffline());
     this.connectivity.on('online', () => this.handleOnline());
     this.connectivity.start();
+    this.lastSyncedSessionMtime = getSessionMtimeMs();
     this.startTick();
+    this.startSessionSync();
   }
 
   getConfig(): AppConfig {
@@ -245,8 +254,146 @@ export class TorrentEngine extends EventEmitter {
   }
 
   private persistSession(): void {
-    if (!this.persistSessionEnabled) return;
+    if (!this.persistSessionEnabled || this.syncingFromDisk) return;
     saveSession({ torrents: [...this.sessionByHash.values()] });
+    this.lastSyncedSessionMtime = getSessionMtimeMs();
+  }
+
+  private startSessionSync(): void {
+    if (!this.persistSessionEnabled || this.sessionSyncHandle) return;
+    this.sessionSyncHandle = setInterval(() => {
+      void this.syncSessionFromDisk();
+    }, SESSION_SYNC_MS);
+  }
+
+  private stopSessionSync(): void {
+    if (!this.sessionSyncHandle) return;
+    clearInterval(this.sessionSyncHandle);
+    this.sessionSyncHandle = null;
+  }
+
+  private async syncSessionFromDisk(): Promise<void> {
+    if (!this.persistSessionEnabled || this.syncingFromDisk || this.sessionSyncInFlight) {
+      return;
+    }
+    const mtime = getSessionMtimeMs();
+    if (mtime == null || mtime === this.lastSyncedSessionMtime) return;
+
+    this.sessionSyncInFlight = true;
+    try {
+      const disk = loadSession();
+      const activeHashes = new Set(
+        this.client.torrents.map((t) => normalizeInfoHash(t.infoHash))
+      );
+      const localPaused = new Map<string, boolean>();
+      for (const hash of activeHashes) {
+        localPaused.set(
+          hash,
+          this.meta.get(hash)?.dlPaused ?? this.sessionByHash.get(hash)?.dlPaused ?? false
+        );
+      }
+      const actions = planSessionSync(
+        activeHashes,
+        this.pendingAddHashes,
+        localPaused,
+        disk
+      );
+
+      this.syncingFromDisk = true;
+      try {
+        const diskByHash = new Map(disk.torrents.map((entry) => [entry.infoHash, entry]));
+        for (const entry of disk.torrents) {
+          this.sessionByHash.set(entry.infoHash, entry);
+        }
+        for (const key of [...this.sessionByHash.keys()]) {
+          if (!diskByHash.has(key)) {
+            this.sessionByHash.delete(key);
+          }
+        }
+
+        for (const action of actions) {
+          switch (action.type) {
+            case 'pause':
+              this.applyExternalPause(action.infoHash);
+              break;
+            case 'resume':
+              this.applyExternalResume(action.infoHash);
+              break;
+            case 'remove':
+              await this.removeTorrentExternal(action.infoHash);
+              break;
+            case 'add':
+              try {
+                await this.add(action.entry.magnet, {
+                  name: action.entry.name,
+                  downloadDir: action.entry.downloadPath,
+                  mediaCategory: action.entry.mediaCategory,
+                  sessionRestore: true,
+                  restoreDlPaused: action.entry.dlPaused,
+                });
+              } catch {
+                // peer may have removed the entry before metadata arrived
+              }
+              break;
+          }
+        }
+      } finally {
+        this.syncingFromDisk = false;
+      }
+
+      this.lastSyncedSessionMtime = mtime;
+      this.emit('update');
+    } finally {
+      this.sessionSyncInFlight = false;
+    }
+  }
+
+  private applyExternalPause(infoHash: string): void {
+    const key = normalizeInfoHash(infoHash);
+    const t = this.findTorrent(key);
+    if (!t) return;
+    const m = this.meta.get(key) ?? {
+      dlPaused: false,
+      history: [],
+      limitNotified: false,
+    };
+    if (m.dlPaused) return;
+    m.dlPaused = true;
+    m.pausedByOffline = false;
+    this.meta.set(key, m);
+    if (t.ready) {
+      const n = t.pieces.length;
+      if (n > 0) t.deselect(0, n - 1);
+      t.pause();
+    }
+  }
+
+  private applyExternalResume(infoHash: string): void {
+    const key = normalizeInfoHash(infoHash);
+    const t = this.findTorrent(key);
+    if (!t) return;
+    const m = this.meta.get(key) ?? {
+      dlPaused: false,
+      history: [],
+      limitNotified: false,
+    };
+    if (!m.dlPaused) return;
+    m.dlPaused = false;
+    m.pausedByOffline = false;
+    this.meta.set(key, m);
+    if (!this.networkOnline) return;
+    if (t.ready) {
+      this.applyResumeInMemory(t);
+    }
+  }
+
+  private async removeTorrentExternal(infoHash: string): Promise<void> {
+    const key = normalizeInfoHash(infoHash);
+    const t = this.findTorrent(key);
+    if (!t) return;
+    this.meta.delete(key);
+    this.sessionByHash.delete(key);
+    await this.client.remove(t, { destroyStore: false });
   }
 
   private removeSessionEntry(infoHash: string): void {
@@ -312,39 +459,54 @@ export class TorrentEngine extends EventEmitter {
     mediaCategory: string | undefined,
     pendingKey?: string
   ): void {
-    const ih = tor.infoHash;
+    const ih = normalizeInfoHash(tor.infoHash);
+    const existing = this.meta.get(ih);
+    const sessionEntry = this.sessionByHash.get(ih);
+    const dlPaused =
+      existing?.dlPaused ?? sessionEntry?.dlPaused ?? restoreDlPaused;
+
     this.meta.set(ih, {
-      dlPaused: restoreDlPaused,
-      history: [],
-      limitNotified: false,
-      mediaCategory,
+      dlPaused,
+      history: existing?.history ?? [],
+      limitNotified: existing?.limitNotified ?? false,
+      mediaCategory: mediaCategory ?? existing?.mediaCategory ?? sessionEntry?.mediaCategory,
     });
     this.registerSessionTorrent(
       tor,
       {
         name: options.name,
         mediaCategory,
-        dlPaused: restoreDlPaused,
+        dlPaused,
       },
       pendingKey
     );
-    if (restoreDlPaused) {
+    if (dlPaused) {
       this.applyPauseInMemory(tor, ih);
+    } else {
+      this.applyResumeInMemory(tor);
     }
     this.emitSnapshot();
   }
 
+  private applyResumeInMemory(t: Torrent): void {
+    if (!t.ready) return;
+    const n = t.pieces.length;
+    if (n > 0) t.select(0, n - 1, 0);
+    t.resume();
+  }
+
   private applyPauseInMemory(t: Torrent, infoHash: string): void {
+    const key = normalizeInfoHash(infoHash);
     const n = t.pieces.length;
     if (n > 0) t.deselect(0, n - 1);
     t.pause();
-    const m = this.meta.get(infoHash) ?? {
+    const m = this.meta.get(key) ?? {
       dlPaused: false,
       history: [],
       limitNotified: false,
     };
     m.dlPaused = true;
-    this.meta.set(infoHash, m);
+    this.meta.set(key, m);
   }
 
   private applyGlobalThrottle(): void {
@@ -407,10 +569,16 @@ export class TorrentEngine extends EventEmitter {
   }
 
   private updateHistory(t: Torrent): void {
-    const ih = t.infoHash;
+    const ih = normalizeInfoHash(t.infoHash);
     let m = this.meta.get(ih);
     if (!m) {
-      m = { dlPaused: false, history: [], limitNotified: false };
+      const sessionEntry = this.sessionByHash.get(ih);
+      m = {
+        dlPaused: sessionEntry?.dlPaused ?? false,
+        history: [],
+        limitNotified: false,
+        mediaCategory: sessionEntry?.mediaCategory,
+      };
       this.meta.set(ih, m);
     }
     const spd = t.downloadSpeed;
@@ -452,7 +620,7 @@ export class TorrentEngine extends EventEmitter {
   }
 
   private snapshot(t: Torrent): TorrentSnapshot {
-    const ih = t.infoHash;
+    const ih = normalizeInfoHash(t.infoHash);
     const m = this.meta.get(ih);
     const policy = getMergedTorrentPolicy(ih, this.config, this.overrides);
     return {
@@ -579,46 +747,57 @@ export class TorrentEngine extends EventEmitter {
   }
 
   pauseDownload(infoHash: string, opts?: { byOffline?: boolean }): void {
-    const t = this.findTorrent(infoHash);
-    if (!t?.ready) return;
-    const n = t.pieces.length;
-    if (n > 0) t.deselect(0, n - 1);
-    t.pause();
-    const m = this.meta.get(infoHash) ?? {
+    const key = normalizeInfoHash(infoHash);
+    const t = this.findTorrent(key);
+    if (!t) return;
+    const m = this.meta.get(key) ?? {
       dlPaused: false,
       history: [],
       limitNotified: false,
     };
     m.dlPaused = true;
     if (opts?.byOffline) m.pausedByOffline = true;
-    this.meta.set(infoHash, m);
+    this.meta.set(key, m);
     if (!opts?.byOffline) {
-      this.setSessionDlPaused(infoHash, true);
+      this.setSessionDlPaused(key, true);
+    }
+    if (t.ready) {
+      const n = t.pieces.length;
+      if (n > 0) t.deselect(0, n - 1);
+      t.pause();
     }
     this.emit('update');
   }
 
   resumeDownload(infoHash: string): void {
-    const t = this.findTorrent(infoHash);
-    if (!t?.ready) return;
-    if (!this.networkOnline) return;
-    const n = t.pieces.length;
-    if (n > 0) t.select(0, n - 1, 0);
-    t.resume();
-    const m = this.meta.get(infoHash);
-    if (m) {
-      m.dlPaused = false;
-      m.pausedByOffline = false;
+    const key = normalizeInfoHash(infoHash);
+    const t = this.findTorrent(key);
+    if (!t) return;
+    const m = this.meta.get(key) ?? {
+      dlPaused: false,
+      history: [],
+      limitNotified: false,
+    };
+    m.dlPaused = false;
+    m.pausedByOffline = false;
+    this.meta.set(key, m);
+    this.setSessionDlPaused(key, false);
+    if (!this.networkOnline) {
+      this.emit('update');
+      return;
     }
-    this.setSessionDlPaused(infoHash, false);
+    if (t.ready) {
+      this.applyResumeInMemory(t);
+    }
     this.emit('update');
   }
 
   async removeTorrent(infoHash: string, destroyFiles: boolean): Promise<void> {
-    const t = this.findTorrent(infoHash);
+    const key = normalizeInfoHash(infoHash);
+    const t = this.findTorrent(key);
     if (!t) return;
-    this.meta.delete(infoHash);
-    this.removeSessionEntry(infoHash);
+    this.meta.delete(key);
+    this.removeSessionEntry(key);
     await this.client.remove(t, { destroyStore: destroyFiles });
     this.emit('update');
   }
@@ -649,6 +828,7 @@ export class TorrentEngine extends EventEmitter {
 
     report('Stopping status updates…', 'network');
     this.stopTick();
+    this.stopSessionSync();
     await yieldToUi();
 
     const torrents = [...this.client.torrents];

@@ -487,7 +487,8 @@ export function App({
     if (!snap) return;
     if (isTorrentUiPaused(snap)) {
       engine.resumeDownload(infoHash);
-      setStatus('Resumed');
+      const after = engine.getSnapshots().find((s) => s.infoHash === infoHash);
+      setStatus(after && !isTorrentUiPaused(after) ? 'Resumed' : 'Could not resume (offline or still loading)');
     } else {
       engine.pauseDownload(infoHash);
       setStatus('Paused download');

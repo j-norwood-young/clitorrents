@@ -201,6 +201,14 @@ export function saveTorrentOverrides(data: TorrentOverridesFile): void {
   fs.writeFileSync(p, JSON.stringify(data, null, 2), 'utf8');
 }
 
+export function getSessionMtimeMs(): number | null {
+  try {
+    return fs.statSync(getSessionPath()).mtimeMs;
+  } catch {
+    return null;
+  }
+}
+
 export function loadSession(): SessionFile {
   try {
     const raw = JSON.parse(fs.readFileSync(getSessionPath(), 'utf8')) as unknown;

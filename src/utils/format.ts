@@ -10,6 +10,27 @@ export function formatBytes(n: number): string {
   return `${v < 10 && i > 0 ? v.toFixed(1) : Math.round(v)} ${u[i]}`;
 }
 
+/** Compact size label with one decimal for KB+ (e.g. 10.2KB, 1.4GB). */
+export function formatBytesCompact1(n: number): string {
+  if (!Number.isFinite(n) || n < 0) return '—';
+  const u = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let i = 0;
+  let v = n;
+  while (v >= 1024 && i < u.length - 1) {
+    v /= 1024;
+    i++;
+  }
+  if (i === 0) return `${Math.round(v)}B`;
+  return `${v.toFixed(1)}${u[i]}`;
+}
+
+/** Downloaded/total pair for transfer rows (e.g. 10.2KB/10.1GB). */
+export function formatTransferProgress(downloaded: number, total: number): string {
+  const dl = formatBytesCompact1(downloaded);
+  const tot = total > 0 ? formatBytesCompact1(total) : '—';
+  return `${dl}/${tot}`;
+}
+
 export function formatSpeed(bps: number): string {
   if (!Number.isFinite(bps) || bps < 0) return '—';
   return `${formatBytes(bps)}/s`;
