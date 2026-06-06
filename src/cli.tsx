@@ -27,13 +27,14 @@ async function main(): Promise<void> {
   }
 
   if (parsed.command === 'download') {
-    const engine = new TorrentEngine(config);
+    const engine = new TorrentEngine(config, { persistSession: false });
     const code = await runDownloadCommand(engine, config, parsed);
     process.exit(code);
   }
 
   if (parsed.command === 'mcp') {
     const engine = new TorrentEngine(config);
+    await engine.restoreSession();
     await runMcpServer(engine, config);
     return;
   }

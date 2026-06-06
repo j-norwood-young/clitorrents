@@ -12,7 +12,7 @@ import { resolveTorrentId } from '../search/resolve-torrent-id.js';
 
 export async function runMcpServer(engine: TorrentEngine, config: AppConfig): Promise<void> {
   const server = new Server(
-    { name: 'clitorrents', version: '0.3.1' },
+    { name: 'clitorrents', version: '0.3.2' },
     { capabilities: { tools: {} } }
   );
 

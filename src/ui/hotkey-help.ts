@@ -43,8 +43,8 @@ export function getHotkeyHelp(ctx: HotkeyHelpContext): string {
         : `Type query · Enter search · ${GLOBAL} · ${LIMITS}`;
     case 'results':
       return compact
-        ? '↑↓ · Enter add · Tab · Ctrl+O · Ctrl+Q'
-        : `↑↓ navigate · Enter download · ${GLOBAL} · ${LIMITS}`;
+        ? '↑↓ · ←→ page · Enter add · Tab · Ctrl+O · Ctrl+Q'
+        : `↑↓ navigate · ←→ page · Enter download · ${GLOBAL} · ${LIMITS}`;
     case 'transfers':
       return compact
         ? '↑↓ · Enter · p · o · x · Tab · Ctrl+O · Ctrl+Q'

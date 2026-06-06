@@ -47,6 +47,82 @@ describe('config round-trip', () => {
   });
 });
 
+describe('session round-trip', () => {
+  it('saves and loads session torrents', async () => {
+    await withTempConfigDir(async () => {
+      const { saveSession, loadSession } = await import('./config.js');
+      saveSession({
+        torrents: [
+          {
+            infoHash: 'abc123',
+            magnet: 'magnet:?xt=urn:btih:abc123',
+            downloadPath: '/data/tv/show',
+            name: 'Show S01E01',
+            mediaCategory: 'tv',
+            dlPaused: true,
+          },
+        ],
+      });
+      const loaded = loadSession();
+      assert.equal(loaded.torrents.length, 1);
+      assert.equal(loaded.torrents[0]?.infoHash, 'abc123');
+      assert.equal(loaded.torrents[0]?.dlPaused, true);
+    });
+  });
+
+  it('dedupes session entries by infoHash', async () => {
+    await withTempConfigDir(async () => {
+      const { saveSession, loadSession } = await import('./config.js');
+      saveSession({
+        torrents: [
+          {
+            infoHash: 'ABC',
+            magnet: 'magnet:?xt=urn:btih:abc',
+            downloadPath: '/old',
+            dlPaused: false,
+          },
+          {
+            infoHash: 'abc',
+            magnet: 'magnet:?xt=urn:btih:abc',
+            downloadPath: '/new',
+            dlPaused: true,
+          },
+        ],
+      });
+      const loaded = loadSession();
+      assert.equal(loaded.torrents.length, 1);
+      assert.equal(loaded.torrents[0]?.downloadPath, '/new');
+      assert.equal(loaded.torrents[0]?.dlPaused, true);
+    });
+  });
+
+  it('persists multiple torrents', async () => {
+    await withTempConfigDir(async () => {
+      const { saveSession, loadSession } = await import('./config.js');
+      saveSession({
+        torrents: [
+          {
+            infoHash: 'aaa',
+            magnet: 'magnet:?xt=urn:btih:aaa',
+            downloadPath: '/one',
+            dlPaused: false,
+          },
+          {
+            infoHash: 'bbb',
+            magnet: 'magnet:?xt=urn:btih:bbb',
+            downloadPath: '/two',
+            name: 'Second',
+            dlPaused: true,
+          },
+        ],
+      });
+      const loaded = loadSession();
+      assert.equal(loaded.torrents.length, 2);
+      assert.equal(loaded.torrents[1]?.name, 'Second');
+    });
+  });
+});
+
 describe('torrent policy overrides', () => {
   it('merges per-torrent ratio over global default', () => {
     const cfg = { ...sampleConfig(), defaultMaxRatio: 2 };

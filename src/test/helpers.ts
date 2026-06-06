@@ -114,4 +114,8 @@ export class FakeEngine extends EventEmitter {
   updateTorrentPolicy(): void {}
 
   async destroy(): Promise<void> {}
+
+  async restoreSession(): Promise<{ restored: number; failed: number }> {
+    return { restored: 0, failed: 0 };
+  }
 }

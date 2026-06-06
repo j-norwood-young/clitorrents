@@ -2,6 +2,14 @@
 
 Terminal UI for searching and downloading torrents.
 
+## Quickstart
+
+```bash
+npx clitorrents
+```
+
+Requires Node.js 20+. No install needed — `npx` downloads and runs the latest release.
+
 **Warning:** Only use this for content you have the right to access.
 
 ## Requirements
@@ -64,13 +72,15 @@ Per-torrent overrides (ratio caps from the detail view, etc.) are stored in:
 
 `~/.config/clitorrents/torrent-overrides.json`
 
+Active transfers are persisted to `session.json` in the same directory whenever you add, pause, resume, or remove a torrent. Restart the TUI (or MCP server) to resume downloads from where they left off — including partial progress on disk. Quitting with Ctrl+Q keeps your session; only explicit remove (`x` / `X`) drops a torrent from the session.
+
 You can also edit settings in the TUI with Ctrl+O.
 
 ### Save location
 
 - **Default:** current working directory (`process.cwd()`)
 - **Permanent override:** set `downloadDir` in `config.json` (applies whenever you run clitorrents)
-- **Category routing:** enable `categories` to send TV, movies, and music to separate folders (detected from torrent names at add time). The results list previews the route before you add. Turning routing on in settings auto-fills `TV`, `Movies`, and `Music` subfolders under your save directory.
+- **Category routing:** enable `categories` to send TV, movies, and music to separate folders (detected from torrent names at add time). Turning routing on in settings auto-fills `TV`, `Movies`, and `Music` subfolders under your save directory.
 - Destination is fixed when a torrent is added; changing `downloadDir` only affects new downloads
 
 ### Category detection (name heuristics)
@@ -116,6 +126,7 @@ Use `categories.unknown` for a catch-all inbox (software, games, etc.) without m
 | Tab | Cycle focus: Search → Results → Transfers |
 | Enter | Search (search focus) / add result (results) / open detail (transfers) |
 | ↑↓ | Navigate results or transfers (when that pane is focused) |
+| ← → | Previous / next results page (results focus) |
 | p | Toggle pause / resume download |
 | o | Open download folder (or reveal file on macOS) |
 | x | Remove torrent, **keep** files on disk |

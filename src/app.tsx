@@ -7,6 +7,8 @@ import {
   searchCliflixStyle,
   type CliflixSearchRow,
 } from './search/cliflix-search.js';
+import { findActiveSnapshot } from './search/result-match.js';
+import { infoHashFromMagnet } from './engine/session-utils.js';
 import { formatGlobalLimitBps, formatSpeed, shortenPath } from './utils/format.js';
 import { defaultCategoryPaths, formatCategoryLabel, planDownloadLocation } from './media/classify.js';
 import { openDownloadPath } from './utils/open-location.js';
@@ -32,10 +34,16 @@ import {
 } from './ui/config-editor.js';
 import { Modal } from './ui/modal.js';
 import { QuitModal, type QuitState } from './ui/quit-modal.js';
-import type { AppView, FocusPane } from './ui/list-utils.js';
+import {
+  computeMainLayout,
+  isTorrentUiPaused,
+  resultsPageCount,
+  resultsPageItemCount,
+  type AppView,
+  type FocusPane,
+} from './ui/list-utils.js';
 import { getHotkeyHelp } from './ui/hotkey-help.js';
 import { isQuitKey } from './ui/keys.js';
-import { isTorrentUiPaused } from './ui/list-utils.js';
 
 export function App({
   engine,
@@ -46,6 +54,7 @@ export function App({
 }): React.ReactNode {
   const { exit } = useApp();
   const { columns: width = 80, rows: termRows = 24 } = useWindowSize();
+  const layout = computeMainLayout(termRows, width);
   const [, setTick] = useState(0);
   const [showSplash, setShowSplash] = useState(true);
   const [quitState, setQuitState] = useState<QuitState | null>(null);
@@ -57,6 +66,7 @@ export function App({
   const [query, setQuery] = useState('');
   const [cursor, setCursor] = useState(0);
   const [results, setResults] = useState<CliflixSearchRow[]>([]);
+  const [resultsPage, setResultsPage] = useState(0);
   const [ri, setRi] = useState(0);
   const [ti, setTi] = useState(0);
   const [busy, setBusy] = useState<'idle' | 'search' | 'add'>('idle');
@@ -82,6 +92,36 @@ export function App({
     };
   }, [engine]);
 
+  useEffect(() => {
+    const pageCount = resultsPageCount(results.length, layout.resultsVisible);
+    setResultsPage((p) => Math.min(p, pageCount - 1));
+  }, [results.length, layout.resultsVisible]);
+
+  useEffect(() => {
+    const len = resultsPageItemCount(resultsPage, results.length, layout.resultsVisible);
+    setRi((i) => (len === 0 ? 0 : Math.min(i, len - 1)));
+  }, [resultsPage, results.length, layout.resultsVisible]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void engine.restoreSession().then((result) => {
+      if (cancelled) return;
+      if (result.restored > 0) {
+        setStatus(`Restored ${result.restored} transfer(s) from last session`);
+      }
+      if (result.failed > 0) {
+        setStatus((prev) =>
+          result.restored > 0
+            ? `${prev} · ${result.failed} could not be restored`
+            : `${result.failed} transfer(s) could not be restored`
+        );
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [engine]);
+
   const snaps = engine.getSnapshots();
   const selectedSnap = snaps[Math.min(ti, Math.max(0, snaps.length - 1))];
 
@@ -100,6 +140,7 @@ export function App({
         categoryByProvider: config.torrents.categoryByProvider,
       });
       setResults(rows);
+      setResultsPage(0);
       setRi(0);
       setFocus('results');
       const detail = info.slice(0, 220);
@@ -143,14 +184,24 @@ export function App({
   }, [engine, exit]);
 
   const addSelected = useCallback(async () => {
-    const row = results[ri];
+    const pageSize = layout.resultsVisible;
+    const row = results[resultsPage * pageSize + ri];
     if (!row) return;
+    if (findActiveSnapshot(row, engine.getSnapshots())) {
+      setStatus('Already downloading.');
+      return;
+    }
     setBusy('add');
     setStatus('Fetching magnet…');
     try {
       const magnet = await getMagnetForTorrent(row._torrent);
       if (!magnet) {
         setStatus('Could not get magnet link for this result (try another).');
+        return;
+      }
+      const hash = infoHashFromMagnet(magnet);
+      if (hash && engine.hasActiveTorrent(hash)) {
+        setStatus('Already downloading.');
         return;
       }
       await engine.add(magnet, { name: row.title });
@@ -161,16 +212,15 @@ export function App({
           ? `Added (${cat}) → ${shortenPath(plan.dir, 52)}`
           : `Added → ${shortenPath(plan.dir, 52)}`
       );
-      setFocus('transfers');
       const list = engine.getSnapshots();
       setTi(Math.max(0, list.length - 1));
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      setStatus(`Add failed: ${msg}`);
+      setStatus(msg === 'Torrent is already downloading' ? 'Already downloading.' : `Add failed: ${msg}`);
     } finally {
       setBusy('idle');
     }
-  }, [results, ri, engine, config]);
+  }, [results, resultsPage, ri, layout.resultsVisible, engine, config]);
 
   const applyConfigFromState = useCallback(
     (next: AppConfig) => {
@@ -307,12 +357,27 @@ export function App({
       if (focus === 'search' && handleSearchInput(input, key)) return;
 
       if (focus === 'results') {
+        const pageSize = layout.resultsVisible;
+        const pageCount = resultsPageCount(results.length, pageSize);
+        const pageLen = resultsPageItemCount(resultsPage, results.length, pageSize);
         if (key.upArrow) {
           setRi((i) => Math.max(0, i - 1));
           return;
         }
         if (key.downArrow) {
-          setRi((i) => (results.length === 0 ? 0 : Math.min(results.length - 1, i + 1)));
+          setRi((i) => (pageLen === 0 ? 0 : Math.min(pageLen - 1, i + 1)));
+          return;
+        }
+        if (key.leftArrow && resultsPage > 0) {
+          const nextPage = resultsPage - 1;
+          setResultsPage(nextPage);
+          setRi((i) => Math.min(i, resultsPageItemCount(nextPage, results.length, pageSize) - 1));
+          return;
+        }
+        if (key.rightArrow && resultsPage < pageCount - 1) {
+          const nextPage = resultsPage + 1;
+          setResultsPage(nextPage);
+          setRi((i) => Math.min(i, resultsPageItemCount(nextPage, results.length, pageSize) - 1));
           return;
         }
         if (key.return) {
@@ -633,14 +698,17 @@ export function App({
     return <Splash onDone={() => setShowSplash(false)} />;
   }
 
-  const sparkW = Math.max(8, Math.min(32, Math.floor(width / 4)));
-  const searchColW = Math.floor(width * 0.48);
-  const titleMax = Math.max(16, searchColW - 6);
-  const headerReserve = 3;
-  const footerReserve = termRows < 22 ? 3 : 4;
-  const mainContentHeight = Math.max(6, termRows - headerReserve - footerReserve);
-  const resultsVisible = Math.max(3, Math.floor(mainContentHeight * 0.45));
-  const transfersVisible = Math.max(2, Math.floor(mainContentHeight * 0.35));
+  const sparkW = layout.sparkW;
+  const searchColW = layout.searchColW;
+  const titleMax = layout.titleMax;
+  const mainContentHeight = layout.mainContentHeight;
+  const resultsVisible = layout.resultsVisible;
+  const transfersVisible = layout.transfersVisible;
+  const resultsPageTotal = resultsPageCount(results.length, resultsVisible);
+  const resultsPageRows = results.slice(
+    resultsPage * resultsVisible,
+    resultsPage * resultsVisible + resultsPageItemCount(resultsPage, results.length, resultsVisible)
+  );
 
   const detailPeerLines = Math.max(2, Math.min(6, mainContentHeight - 12));
 
@@ -715,14 +783,16 @@ export function App({
               />
             </Box>
             <ResultsList
-              results={results}
+              results={resultsPageRows}
               selectedIndex={ri}
+              page={resultsPage}
+              pageCount={resultsPageTotal}
+              totalCount={results.length}
+              pageSize={resultsVisible}
               focused={!modalOpen && focus === 'results'}
               dimmed={modalOpen}
-              visibleRows={resultsVisible}
               titleMax={titleMax}
-              config={config}
-              baseDir={engine.getBaseDownloadDir()}
+              activeSnapshots={snaps}
             />
           </Box>
           <Box width={Math.floor(width * 0.52)} marginLeft={1}>

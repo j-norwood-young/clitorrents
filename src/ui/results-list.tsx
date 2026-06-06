@@ -1,37 +1,43 @@
 import React from 'react';
 import { Box, Text } from 'ink';
-import type { AppConfig } from '../config.js';
+import type { TorrentSnapshot } from '../engine/torrent-engine.js';
 import type { CliflixSearchRow } from '../search/cliflix-search.js';
-import { formatCategoryLabel, planDownloadLocation } from '../media/classify.js';
-import { formatBytes, shortenPath } from '../utils/format.js';
-import { listScrollTop } from './list-utils.js';
+import { findActiveSnapshot, formatActiveResultBadge } from '../search/result-match.js';
+import { formatBytes } from '../utils/format.js';
+import { resultsPageItemCount } from './list-utils.js';
 
 export function ResultsList({
   results,
   selectedIndex,
+  page,
+  pageCount,
+  totalCount,
+  pageSize,
   focused,
   dimmed = false,
-  visibleRows,
   titleMax,
-  config,
-  baseDir,
+  activeSnapshots,
 }: {
   results: CliflixSearchRow[];
   selectedIndex: number;
+  page: number;
+  pageCount: number;
+  totalCount: number;
+  pageSize: number;
   focused: boolean;
   dimmed?: boolean;
-  visibleRows: number;
   titleMax: number;
-  config: AppConfig;
-  baseDir: string;
+  activeSnapshots: readonly TorrentSnapshot[];
 }): React.ReactNode {
-  const routing = config.categories?.enabled ?? false;
-  const scrollTop = listScrollTop(results.length, selectedIndex, visibleRows);
-  const windowEnd = Math.min(results.length, scrollTop + visibleRows);
+  const pageLen = resultsPageItemCount(page, totalCount, pageSize);
+  const rangeStart = totalCount === 0 ? 0 : page * pageSize + 1;
+  const rangeEnd = totalCount === 0 ? 0 : rangeStart + pageLen - 1;
   const label =
-    results.length === 0
+    totalCount === 0
       ? 'Results'
-      : `Results ${scrollTop + 1}-${windowEnd} of ${results.length}`;
+      : pageCount > 1
+        ? `Results ${page + 1}/${pageCount} (${rangeStart}-${rangeEnd} of ${totalCount})`
+        : `Results (${totalCount})`;
 
   return (
     <Box
@@ -44,23 +50,23 @@ export function ResultsList({
     >
       <Text bold={focused && !dimmed} color={focused && !dimmed ? 'cyan' : undefined} dimColor={dimmed}>
         {label} {focused && !dimmed ? '*' : ''}
-        {routing ? <Text dimColor> (route preview)</Text> : null}
       </Text>
-      {results.length === 0 ? (
+      {totalCount === 0 ? (
         <Text dimColor>No results — run a search from the search pane</Text>
       ) : (
-        results.slice(scrollTop, scrollTop + visibleRows).map((r, j) => {
-          const i = scrollTop + j;
+        results.map((r, i) => {
           const selected = focused && !dimmed && i === selectedIndex;
-          const plan = routing ? planDownloadLocation(r.title, config, baseDir) : null;
-          const routeSuffix = plan
-            ? ` [${formatCategoryLabel(plan.category)}→${shortenPath(plan.dir, 18)}]`
-            : '';
-          const titleLen = Math.max(12, titleMax - routeSuffix.length);
+          const activeSnap = findActiveSnapshot(r, activeSnapshots);
+          const activeBadge = activeSnap ? `${formatActiveResultBadge(activeSnap)} ` : '';
+          const titleLen = Math.max(12, titleMax - activeBadge.length);
           return (
-            <Text key={`${i}-${r.title.slice(0, 48)}`} inverse={selected} dimColor={dimmed && !selected}>
-              {r.title.slice(0, titleLen)}
-              {routeSuffix ? <Text dimColor>{routeSuffix}</Text> : null}{' '}
+            <Text key={`${page}-${i}-${r.title.slice(0, 48)}`} inverse={selected} dimColor={dimmed && !selected}>
+              {activeSnap ? (
+                <Text color={activeSnap.done ? 'green' : activeSnap.dlPaused || activeSnap.paused ? 'yellow' : 'green'}>
+                  {activeBadge}
+                </Text>
+              ) : null}
+              {r.title.slice(0, titleLen)}{' '}
               <Text dimColor>
                 {r.seeders ?? '?'}S{' '}
                 {typeof r.size === 'string'

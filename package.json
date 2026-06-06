@@ -1,6 +1,6 @@
 {
   "name": "clitorrents",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "TUI torrent client",
   "type": "module",
   "bin": {
@@ -10,6 +10,21 @@
     "dist"
   ],
   "main": "./dist/cli.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/j-norwood-young/clitorrents.git"
+  },
+  "bugs": {
+    "url": "https://github.com/j-norwood-young/clitorrents/issues"
+  },
+  "homepage": "https://github.com/j-norwood-young/clitorrents#readme",
+  "keywords": [
+    "torrent",
+    "tui",
+    "cli",
+    "webtorrent",
+    "terminal"
+  ],
   "scripts": {
     "build": "tsc",
     "prepack": "npm run build",

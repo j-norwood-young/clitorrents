@@ -12,6 +12,7 @@ describe('getHotkeyHelp', () => {
   it('shows results keys when results pane focused', () => {
     const help = getHotkeyHelp({ view: { kind: 'main' }, focus: 'results', configEditing: false, configPickerOpen: false });
     assert.match(help, /Enter download/);
+    assert.match(help, /←→ page/);
   });
 
   it('shows picker keys when config picker open', () => {

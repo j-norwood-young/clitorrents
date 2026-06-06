@@ -4,17 +4,20 @@ import os from 'node:os';
 import path from 'node:path';
 import WebTorrent from 'webtorrent';
 import type { Torrent } from 'webtorrent';
-import type { AppConfig, TorrentOverridesFile } from '../config.js';
+import type { AppConfig, SessionTorrent, TorrentOverridesFile } from '../config.js';
 import {
   getMergedTorrentPolicy,
+  loadSession,
   loadTorrentOverrides,
   resolveBaseDir,
   saveConfig,
+  saveSession,
   saveTorrentOverrides,
   setTorrentOverride,
 } from '../config.js';
 import { planDownloadLocation } from '../media/classify.js';
 import { ConnectivityMonitor } from '../net/connectivity.js';
+import { infoHashFromMagnet, sessionKeyForMagnet, whenTorrentReady } from './session-utils.js';
 
 const HISTORY_LEN = 48;
 const TICK_MS_ONLINE = 400;
@@ -69,11 +72,31 @@ function shortTorrentLabel(t: Torrent): string {
   return t.infoHash.slice(0, 12);
 }
 
+function normalizeInfoHash(infoHash: string): string {
+  return infoHash.toLowerCase();
+}
+
+function magnetUriForTorrent(tor: Torrent, fallback?: string): string {
+  const uri = (tor as Torrent & { magnetURI?: string }).magnetURI;
+  if (uri) return uri;
+  if (fallback) return fallback;
+  return `magnet:?xt=urn:btih:${normalizeInfoHash(tor.infoHash)}`;
+}
+
 export type AddTorrentOptions = {
   /** Used for category routing at add time; destination is fixed once added. */
   name?: string;
   /** Override base/category resolution for this add only */
   downloadDir?: string;
+  /** Restored from session.json — skip category routing heuristics */
+  sessionRestore?: boolean;
+  mediaCategory?: string;
+  restoreDlPaused?: boolean;
+};
+
+export type SessionRestoreResult = {
+  restored: number;
+  failed: number;
 };
 
 type WireLike = {
@@ -100,16 +123,27 @@ export class TorrentEngine extends EventEmitter {
   private overrides: TorrentOverridesFile;
   private baseDownloadDir: string;
   private meta = new Map<string, TorrentMeta>();
+  private sessionByHash = new Map<string, SessionTorrent>();
   private tickHandle: ReturnType<typeof setInterval> | null = null;
   private tickMs = TICK_MS_ONLINE;
   private connectivity: ConnectivityMonitor;
   private networkOnline = true;
+  private persistSessionEnabled: boolean;
+  /** Info hashes currently being added (before client.torrents is updated). */
+  private pendingAddHashes = new Set<string>();
 
-  constructor(config: AppConfig, opts?: { connectivity?: ConnectivityMonitor }) {
+  constructor(
+    config: AppConfig,
+    opts?: { connectivity?: ConnectivityMonitor; persistSession?: boolean }
+  ) {
     super();
+    this.persistSessionEnabled = opts?.persistSession !== false;
     this.config = config;
     this.overrides = loadTorrentOverrides();
     this.baseDownloadDir = resolveBaseDir(config);
+    for (const entry of loadSession().torrents) {
+      this.sessionByHash.set(entry.infoHash, entry);
+    }
     fs.mkdirSync(this.baseDownloadDir, { recursive: true });
     this.client = new WebTorrent({
       downloadLimit: normLimit(config.globalDownloadLimitBps),
@@ -178,6 +212,139 @@ export class TorrentEngine extends EventEmitter {
 
   reloadOverrides(): void {
     this.overrides = loadTorrentOverrides();
+  }
+
+  /** Re-add torrents from session.json (TUI / MCP startup). */
+  async restoreSession(): Promise<SessionRestoreResult> {
+    if (!this.persistSessionEnabled) {
+      return { restored: 0, failed: 0 };
+    }
+    const entries = [...this.sessionByHash.values()];
+    let restored = 0;
+    let failed = 0;
+
+    for (const entry of entries) {
+      if (this.findTorrent(entry.infoHash)) continue;
+      try {
+        await this.add(entry.magnet, {
+          name: entry.name,
+          downloadDir: entry.downloadPath,
+          mediaCategory: entry.mediaCategory,
+          sessionRestore: true,
+          restoreDlPaused: entry.dlPaused,
+        });
+        restored++;
+      } catch {
+        failed++;
+      }
+    }
+
+    const result = { restored, failed };
+    this.emit('session-restored', result);
+    return result;
+  }
+
+  private persistSession(): void {
+    if (!this.persistSessionEnabled) return;
+    saveSession({ torrents: [...this.sessionByHash.values()] });
+  }
+
+  private removeSessionEntry(infoHash: string): void {
+    const key = normalizeInfoHash(infoHash);
+    if (!this.sessionByHash.delete(key)) return;
+    this.persistSession();
+  }
+
+  private setSessionDlPaused(infoHash: string, dlPaused: boolean): void {
+    const key = normalizeInfoHash(infoHash);
+    const entry = this.sessionByHash.get(key);
+    if (!entry || entry.dlPaused === dlPaused) return;
+    this.sessionByHash.set(key, { ...entry, dlPaused });
+    this.persistSession();
+  }
+
+  private registerSessionTorrent(
+    tor: Torrent,
+    extras: { name?: string; mediaCategory?: string; dlPaused: boolean },
+    pendingKey?: string
+  ): void {
+    const key = normalizeInfoHash(tor.infoHash);
+    if (pendingKey && pendingKey !== key) {
+      this.sessionByHash.delete(pendingKey);
+    }
+    const existing = this.sessionByHash.get(key);
+    const entry: SessionTorrent = {
+      infoHash: key,
+      magnet: magnetUriForTorrent(tor, existing?.magnet),
+      downloadPath: tor.path || existing?.downloadPath || '',
+      name: extras.name ?? tor.name ?? existing?.name,
+      mediaCategory: extras.mediaCategory ?? existing?.mediaCategory,
+      dlPaused: extras.dlPaused,
+    };
+    if (!entry.downloadPath || !entry.magnet) return;
+    this.sessionByHash.set(key, entry);
+    this.persistSession();
+  }
+
+  /** Save to session as soon as a torrent is queued (before metadata ready). */
+  private upsertSessionEarly(
+    magnet: string,
+    downloadPath: string,
+    extras: { name?: string; mediaCategory?: string; dlPaused: boolean }
+  ): string {
+    const key = sessionKeyForMagnet(magnet);
+    this.sessionByHash.set(key, {
+      infoHash: infoHashFromMagnet(magnet) ?? key,
+      magnet,
+      downloadPath,
+      name: extras.name,
+      mediaCategory: extras.mediaCategory,
+      dlPaused: extras.dlPaused,
+    });
+    this.persistSession();
+    return key;
+  }
+
+  private onTorrentReady(
+    tor: Torrent,
+    options: AddTorrentOptions,
+    restoreDlPaused: boolean,
+    mediaCategory: string | undefined,
+    pendingKey?: string
+  ): void {
+    const ih = tor.infoHash;
+    this.meta.set(ih, {
+      dlPaused: restoreDlPaused,
+      history: [],
+      limitNotified: false,
+      mediaCategory,
+    });
+    this.registerSessionTorrent(
+      tor,
+      {
+        name: options.name,
+        mediaCategory,
+        dlPaused: restoreDlPaused,
+      },
+      pendingKey
+    );
+    if (restoreDlPaused) {
+      this.applyPauseInMemory(tor, ih);
+    }
+    this.emitSnapshot();
+  }
+
+  private applyPauseInMemory(t: Torrent, infoHash: string): void {
+    const n = t.pieces.length;
+    if (n > 0) t.deselect(0, n - 1);
+    t.pause();
+    const m = this.meta.get(infoHash) ?? {
+      dlPaused: false,
+      history: [],
+      limitNotified: false,
+    };
+    m.dlPaused = true;
+    this.meta.set(infoHash, m);
   }
 
   private applyGlobalThrottle(): void {
@@ -267,6 +434,7 @@ export class TorrentEngine extends EventEmitter {
   private async applyLimitAction(t: Torrent): Promise<void> {
     if (this.config.onReachLimit === 'remove_keep_files') {
       this.meta.delete(t.infoHash);
+      this.removeSessionEntry(t.infoHash);
       await this.client.remove(t, { destroyStore: false });
     } else {
       const n = t.pieces.length;
@@ -274,6 +442,7 @@ export class TorrentEngine extends EventEmitter {
       t.pause();
       const m = this.meta.get(t.infoHash);
       if (m) m.dlPaused = true;
+      this.setSessionDlPaused(t.infoHash, true);
     }
     this.emit('update');
   }
@@ -325,20 +494,65 @@ export class TorrentEngine extends EventEmitter {
   }
 
   findTorrent(infoHash: string): Torrent | undefined {
-    return this.client.torrents.find((x) => x.infoHash === infoHash);
+    const key = normalizeInfoHash(infoHash);
+    return this.client.torrents.find((x) => normalizeInfoHash(x.infoHash) === key);
+  }
+
+  /** True if this info hash is already queued, downloading, or being added. */
+  hasActiveTorrent(infoHash: string): boolean {
+    const key = normalizeInfoHash(infoHash);
+    return this.pendingAddHashes.has(key) || !!this.findTorrent(key);
   }
 
   async add(torrentId: string | Uint8Array, options: AddTorrentOptions = {}): Promise<void> {
     const name = options.name ?? '';
-    const plan = name
-      ? planDownloadLocation(name, this.config, this.baseDownloadDir)
-      : { category: 'unknown' as const, dir: this.baseDownloadDir };
-    const dir = options.downloadDir ?? plan.dir;
+    let dir: string;
+    let mediaCategory: string | undefined;
+
+    if (options.sessionRestore && options.downloadDir) {
+      dir = options.downloadDir;
+      mediaCategory = options.mediaCategory;
+    } else {
+      const plan = name
+        ? planDownloadLocation(name, this.config, this.baseDownloadDir)
+        : { category: 'unknown' as const, dir: this.baseDownloadDir };
+      dir = options.downloadDir ?? plan.dir;
+      mediaCategory = name ? plan.category : undefined;
+    }
     fs.mkdirSync(dir, { recursive: true });
 
-    const mediaCategory = name ? plan.category : undefined;
+    const restoreDlPaused = options.restoreDlPaused ?? false;
+    const magnetStr =
+      typeof torrentId === 'string' && torrentId.startsWith('magnet:') ? torrentId : null;
+    const infoHash = magnetStr ? infoHashFromMagnet(magnetStr) : null;
+    if (infoHash && !options.sessionRestore && this.hasActiveTorrent(infoHash)) {
+      throw new Error('Torrent is already downloading');
+    }
+    if (infoHash && !options.sessionRestore) {
+      this.pendingAddHashes.add(infoHash);
+    }
 
-    const tor = this.client.add(torrentId as unknown, { path: dir });
+    const releasePending = (): void => {
+      if (infoHash) this.pendingAddHashes.delete(infoHash);
+    };
+
+    const pendingKey =
+      magnetStr && !options.sessionRestore
+        ? this.upsertSessionEarly(magnetStr, dir, {
+            name: options.name,
+            mediaCategory,
+            dlPaused: restoreDlPaused,
+          })
+        : undefined;
+
+    let tor: Torrent;
+    try {
+      tor = this.client.add(torrentId as unknown, { path: dir });
+    } catch (err) {
+      releasePending();
+      throw err;
+    }
+    releasePending();
 
     return new Promise<void>((resolve, reject) => {
       let settled = false;
@@ -356,15 +570,8 @@ export class TorrentEngine extends EventEmitter {
         }
       });
 
-      tor.once('ready', () => {
-        const ih = tor.infoHash;
-        this.meta.set(ih, {
-          dlPaused: false,
-          history: [],
-          limitNotified: false,
-          mediaCategory,
-        });
-        this.emitSnapshot();
+      whenTorrentReady(tor, () => {
+        this.onTorrentReady(tor, options, restoreDlPaused, mediaCategory, pendingKey);
       });
 
       setImmediate(safeResolve);
@@ -385,6 +592,9 @@ export class TorrentEngine extends EventEmitter {
     m.dlPaused = true;
     if (opts?.byOffline) m.pausedByOffline = true;
     this.meta.set(infoHash, m);
+    if (!opts?.byOffline) {
+      this.setSessionDlPaused(infoHash, true);
+    }
     this.emit('update');
   }
 
@@ -400,6 +610,7 @@ export class TorrentEngine extends EventEmitter {
       m.dlPaused = false;
       m.pausedByOffline = false;
     }
+    this.setSessionDlPaused(infoHash, false);
     this.emit('update');
   }
 
@@ -407,6 +618,7 @@ export class TorrentEngine extends EventEmitter {
     const t = this.findTorrent(infoHash);
     if (!t) return;
     this.meta.delete(infoHash);
+    this.removeSessionEntry(infoHash);
     await this.client.remove(t, { destroyStore: destroyFiles });
     this.emit('update');
   }

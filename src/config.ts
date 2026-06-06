@@ -18,6 +18,10 @@ export function getTorrentOverridesPath(): string {
   return path.join(getConfigDir(), 'torrent-overrides.json');
 }
 
+export function getSessionPath(): string {
+  return path.join(getConfigDir(), 'session.json');
+}
+
 /** @deprecated use getConfigPath() */
 export const configPath = getConfigPath();
 /** @deprecated use getTorrentOverridesPath() */
@@ -81,6 +85,23 @@ export const TorrentOverridesFileSchema = z.object({
 });
 
 export type TorrentOverridesFile = z.infer<typeof TorrentOverridesFileSchema>;
+
+export const SessionTorrentSchema = z.object({
+  infoHash: z.string().min(1),
+  magnet: z.string().min(1),
+  downloadPath: z.string().min(1),
+  name: z.string().optional(),
+  mediaCategory: z.string().optional(),
+  dlPaused: z.boolean().default(false),
+});
+
+export type SessionTorrent = z.infer<typeof SessionTorrentSchema>;
+
+export const SessionFileSchema = z.object({
+  torrents: z.array(SessionTorrentSchema).default([]),
+});
+
+export type SessionFile = z.infer<typeof SessionFileSchema>;
 
 function defaultConfig(): AppConfig {
   return {
@@ -178,6 +199,30 @@ export function saveTorrentOverrides(data: TorrentOverridesFile): void {
   const p = getTorrentOverridesPath();
   fs.mkdirSync(path.dirname(p), { recursive: true });
   fs.writeFileSync(p, JSON.stringify(data, null, 2), 'utf8');
+}
+
+export function loadSession(): SessionFile {
+  try {
+    const raw = JSON.parse(fs.readFileSync(getSessionPath(), 'utf8')) as unknown;
+    const parsed = SessionFileSchema.parse(raw);
+    const byHash = new Map<string, SessionTorrent>();
+    for (const entry of parsed.torrents) {
+      const key = entry.infoHash.toLowerCase();
+      byHash.set(key, { ...entry, infoHash: key });
+    }
+    return { torrents: [...byHash.values()] };
+  } catch {
+    return { torrents: [] };
+  }
+}
+
+export function saveSession(data: SessionFile): void {
+  const p = getSessionPath();
+  fs.mkdirSync(path.dirname(p), { recursive: true });
+  const normalized = SessionFileSchema.parse(data);
+  const tmp = `${p}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(normalized, null, 2), 'utf8');
+  fs.renameSync(tmp, p);
 }
 
 export function getMergedTorrentPolicy(
