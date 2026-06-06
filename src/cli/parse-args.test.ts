@@ -35,4 +35,16 @@ describe('parseCliArgs', () => {
   it('parses mcp command', () => {
     assert.deepEqual(parseCliArgs(['mcp']), { command: 'mcp' });
   });
+
+  it('parses daemon command', () => {
+    assert.deepEqual(parseCliArgs(['daemon']), { command: 'daemon' });
+  });
+
+  it('parses stop command', () => {
+    assert.deepEqual(parseCliArgs(['stop']), { command: 'stop' });
+  });
+
+  it('parses status command', () => {
+    assert.deepEqual(parseCliArgs(['status']), { command: 'status' });
+  });
 });

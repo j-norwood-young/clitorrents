@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, Text } from 'ink';
-import type { TorrentEngine } from '../engine/torrent-engine.js';
+import type { EngineLike } from '../engine/engine-like.js';
 import { formatBytes, formatEta, formatRatio, formatSpeed } from '../utils/format.js';
 import { Sparkline } from './sparkline.js';
 import { isTorrentUiPaused } from './list-utils.js';
@@ -13,7 +13,7 @@ export function DetailPane({
   sparkW,
   maxPeerLines = 12,
 }: {
-  engine: TorrentEngine;
+  engine: EngineLike;
   infoHash: string;
   width: number;
   sparkW: number;

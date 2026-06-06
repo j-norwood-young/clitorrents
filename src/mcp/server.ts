@@ -6,13 +6,13 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import type { AppConfig } from '../config.js';
 import { saveConfig } from '../config.js';
-import type { TorrentEngine } from '../engine/torrent-engine.js';
+import type { EngineLike } from '../engine/engine-like.js';
 import { getMagnetForTorrent, searchCliflixStyle } from '../search/cliflix-search.js';
 import { resolveTorrentId } from '../search/resolve-torrent-id.js';
 
-export async function runMcpServer(engine: TorrentEngine, config: AppConfig): Promise<void> {
+export async function runMcpServer(engine: EngineLike, config: AppConfig): Promise<void> {
   const server = new Server(
-    { name: 'clitorrents', version: '0.3.2' },
+    { name: 'clitorrents', version: '0.4.0' },
     { capabilities: { tools: {} } }
   );
 

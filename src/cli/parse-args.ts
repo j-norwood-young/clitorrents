@@ -12,6 +12,9 @@ export type ParsedCli =
       pick?: number;
     }
   | { command: 'mcp' }
+  | { command: 'daemon' }
+  | { command: 'stop' }
+  | { command: 'status' }
   | { command: 'help' };
 
 export function parseCliArgs(argv: string[]): ParsedCli {
@@ -22,6 +25,12 @@ export function parseCliArgs(argv: string[]): ParsedCli {
   if (cmd === 'help' || cmd === '--help' || cmd === '-h') return { command: 'help' };
 
   if (cmd === 'mcp') return { command: 'mcp' };
+
+  if (cmd === 'daemon') return { command: 'daemon' };
+
+  if (cmd === 'stop') return { command: 'stop' };
+
+  if (cmd === 'status') return { command: 'status' };
 
   if (cmd === 'search') {
     const rest = collectFlags(args.slice(1));
@@ -91,10 +100,13 @@ export function printCliHelp(): void {
   console.log(`clitorrents — torrent search & download
 
 Usage:
-  clitorrents                    Launch TUI (default)
+  clitorrents                    Launch TUI (default; connects to daemon)
+  clitorrents daemon             Run background torrent daemon (single WebTorrent client)
+  clitorrents stop               Stop the background daemon
+  clitorrents status             Show daemon PID, uptime, transfers, and SSE clients
   clitorrents search <query>     Search and list results
   clitorrents download <target>  Download by query, magnet, hash, or .torrent URL
-  clitorrents mcp                Start MCP server (stdio)
+  clitorrents mcp                Start MCP server (stdio; connects to daemon)
 
 Search flags:
   --provider NAME    Active provider

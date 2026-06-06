@@ -41,17 +41,41 @@ cd /path/to/clitorrents
 npm install
 npm run build
 npm start
-# or: node dist/cli.js
+```
+
+npm scripts (after `npm run build`):
+
+| Script | Same as |
+|--------|---------|
+| `npm start` | TUI |
+| `npm run daemon` | `clitorrents daemon` |
+| `npm run stop` | `clitorrents stop` |
+| `npm run status` | `clitorrents status` |
+| `npm run mcp` | `clitorrents mcp` |
+| `npm run search -- "<query>"` | `clitorrents search …` |
+| `npm run download -- "<target>"` | `clitorrents download …` |
+
+## Architecture
+
+A single **background daemon** owns the WebTorrent client. The TUI, MCP server, and `download` command connect to it over HTTP on `127.0.0.1:17359` (configurable via `daemon.host` / `daemon.port` in `config.json`). Live updates use **Server-Sent Events** (`/api/events`).
+
+Starting the TUI or MCP auto-spawns the daemon if it is not already running. Ctrl+Q closes the TUI only — downloads continue in the daemon. Stop everything with:
+
+```bash
+clitorrents stop
 ```
 
 ## Operating modes
 
 | Command | Description |
 |---------|-------------|
-| `clitorrents` | Interactive TUI (default) |
+| `clitorrents` | Interactive TUI (connects to daemon) |
+| `clitorrents daemon` | Run background daemon (usually auto-started) |
+| `clitorrents stop` | Stop daemon and all transfers |
+| `clitorrents status` | Show daemon PID, uptime, active transfers, and connected clients |
 | `clitorrents search "<query>"` | Print search results to stdout |
-| `clitorrents download "<query\|magnet\|hash\|url>"` | Download and stream progress until done |
-| `clitorrents mcp` | MCP server on stdio (for AI tooling) |
+| `clitorrents download "<query\|magnet\|hash\|url>"` | Download via daemon until done |
+| `clitorrents mcp` | MCP server on stdio (connects to daemon) |
 
 ### CLI examples
 
@@ -72,7 +96,7 @@ Per-torrent overrides (ratio caps from the detail view, etc.) are stored in:
 
 `~/.config/clitorrents/torrent-overrides.json`
 
-Active transfers are persisted to `session.json` in the same directory whenever you add, pause, resume, or remove a torrent. Restart the TUI (or MCP server) to resume downloads from where they left off — including partial progress on disk. Quitting with Ctrl+Q keeps your session; only explicit remove (`x` / `X`) drops a torrent from the session.
+Active transfers are persisted to `session.json` in the same directory whenever you add, pause, resume, or remove a torrent. The daemon restores them on startup. Quitting the TUI with Ctrl+Q leaves downloads running; use `clitorrents stop` to shut down the daemon. Only explicit remove (`x` / `X`) drops a torrent from the session.
 
 You can also edit settings in the TUI with Ctrl+O.
 
@@ -112,6 +136,7 @@ Use `categories.unknown` for a catch-all inbox (software, games, etc.) without m
 | `defaultMaxRatio` | Stop policy when ratio reached |
 | `defaultMaxUploadBytes` | Optional upload cap in bytes |
 | `onReachLimit` | `pause_seed` (deselect + pause) or `remove_keep_files` |
+| `daemon.host` / `daemon.port` | Local HTTP API for TUI/MCP clients (default `127.0.0.1:17359`) |
 
 ### Provider notes
 
@@ -143,11 +168,60 @@ Search is always editable — type anytime without switching modes.
 
 ## MCP server
 
+The MCP server connects to the same background daemon as the TUI (auto-started on first use).
+
 ```bash
 clitorrents mcp
+# or: npm run mcp
 ```
 
 Tools: `search`, `add_torrent`, `list_transfers`, `transfer_status`, `pause_torrent`, `resume_torrent`, `remove_torrent`, `set_limits`, `get_config`, `set_config`.
+
+### Cursor / Claude Desktop config
+
+**Production** (after `npm install -g clitorrents`, or via `npx` with no install):
+
+```json
+{
+  "mcpServers": {
+    "clitorrents": {
+      "command": "npx",
+      "args": ["-y", "clitorrents", "mcp"]
+    }
+  }
+}
+```
+
+If installed globally, you can use the binary directly:
+
+```json
+{
+  "mcpServers": {
+    "clitorrents": {
+      "command": "clitorrents",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+**Local development** (from a clone, after `npm run build`):
+
+```json
+{
+  "mcpServers": {
+    "clitorrents": {
+      "command": "node",
+      "args": ["/absolute/path/to/clitorrents/dist/cli.js", "mcp"]
+    }
+  }
+}
+```
+
+- Cursor: `.cursor/mcp.json` in your project, or **Settings → MCP**
+- Claude Desktop: `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or the equivalent on your OS
+
+Use `clitorrents status` (or `npm run status`) to confirm the daemon PID, transfer count, and connected SSE clients.
 
 ## Manual check
 

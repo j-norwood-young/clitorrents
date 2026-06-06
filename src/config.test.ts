@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+  getDaemonBaseUrl,
   getMergedTorrentPolicy,
   resolveBaseDir,
   setTorrentOverride,
@@ -31,6 +32,13 @@ describe('resolveBaseDir', () => {
   it('uses explicit downloadDir override', () => {
     const cfg = { ...sampleConfig(), downloadDir: '/data/torrents' };
     assert.equal(resolveBaseDir(cfg, '/tmp/foo'), '/data/torrents');
+  });
+});
+
+describe('getDaemonBaseUrl', () => {
+  it('builds URL from daemon config', () => {
+    const cfg = { ...sampleConfig(), daemon: { host: '127.0.0.1', port: 17359 } };
+    assert.equal(getDaemonBaseUrl(cfg), 'http://127.0.0.1:17359');
   });
 });
 

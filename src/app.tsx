@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Box, Text, useInput, usePaste, useApp, useWindowSize } from 'ink';
-import type { TorrentEngine } from './engine/torrent-engine.js';
+import type { EngineLike } from './engine/engine-like.js';
 import type { AppConfig } from './config.js';
 import {
   getMagnetForTorrent,
@@ -33,7 +33,6 @@ import {
   type ConfigField,
 } from './ui/config-editor.js';
 import { Modal } from './ui/modal.js';
-import { QuitModal, type QuitState } from './ui/quit-modal.js';
 import {
   computeMainLayout,
   isTorrentUiPaused,
@@ -49,7 +48,7 @@ export function App({
   engine,
   initialConfig,
 }: {
-  engine: TorrentEngine;
+  engine: EngineLike;
   initialConfig: AppConfig;
 }): React.ReactNode {
   const { exit } = useApp();
@@ -57,7 +56,6 @@ export function App({
   const layout = computeMainLayout(termRows, width);
   const [, setTick] = useState(0);
   const [showSplash, setShowSplash] = useState(true);
-  const [quitState, setQuitState] = useState<QuitState | null>(null);
   const quittingRef = useRef(false);
 
   const [config, setConfig] = useState<AppConfig>(initialConfig);
@@ -158,29 +156,7 @@ export function App({
     if (quittingRef.current) return;
     quittingRef.current = true;
     setShowSplash(false);
-
-    const initial = 'Preparing to quit…';
-    setQuitState({ message: initial, log: [initial] });
-
-    void (async () => {
-      try {
-        await engine.shutdown((progress) => {
-          setQuitState((prev) => ({
-            message: progress.message,
-            log: [...(prev?.log ?? []), progress.message],
-          }));
-        });
-      } catch {
-        setQuitState((prev) => {
-          const err = 'Shutdown error — exiting anyway';
-          return prev
-            ? { message: err, log: [...prev.log, err] }
-            : { message: err, log: [err] };
-        });
-      } finally {
-        exit();
-      }
-    })();
+    void engine.destroy().finally(() => exit());
   }, [engine, exit]);
 
   const addSelected = useCallback(async () => {
@@ -264,9 +240,7 @@ export function App({
         return;
       }
 
-      if (quitState) return;
-
-      if (showSplash) return;
+      if (quittingRef.current) return;
 
       if (key.ctrl && input === 'o') {
         if (view.kind !== 'config') {
@@ -513,9 +487,8 @@ export function App({
     }
     if (input === 'p') togglePause(ih);
     if (input === 'o') {
-      const t = engine.findTorrent(ih);
-      if (t?.files?.[0]) openDownloadPath(t.files[0].path);
-      else if (t?.path) openDownloadPath(t.path);
+      const snap = engine.getSnapshots().find((s) => s.infoHash === ih);
+      if (snap?.downloadPath) openDownloadPath(snap.downloadPath);
     }
     if (input === '[') adjustTorrentRatio(ih, false);
     if (input === ']') adjustTorrentRatio(ih, true);
@@ -695,7 +668,7 @@ export function App({
     applyFieldUpdate(next);
   }
 
-  if (showSplash && !quitState) {
+  if (showSplash) {
     return <Splash onDone={() => setShowSplash(false)} />;
   }
 
@@ -713,7 +686,7 @@ export function App({
 
   const detailPeerLines = Math.max(2, Math.min(6, mainContentHeight - 12));
 
-  const modalOpen = view.kind !== 'main' || quitState !== null;
+  const modalOpen = view.kind !== 'main';
   const configPickerOptionCount = configPickerOpen
     ? getChoiceOptions(configField, config).length
     : 0;
@@ -722,9 +695,7 @@ export function App({
     : Math.min(mainContentHeight - 2, 16);
   const detailModalHeight = Math.min(mainContentHeight - 2, 10 + detailPeerLines);
 
-  const hotkeyHelp = quitState
-    ? 'Shutting down — please wait…'
-    : getHotkeyHelp({
+  const hotkeyHelp = getHotkeyHelp({
         view,
         focus,
         configEditing,
@@ -846,10 +817,6 @@ export function App({
               maxPeerLines={detailPeerLines}
             />
           </Modal>
-        ) : null}
-
-        {quitState ? (
-          <QuitModal state={quitState} areaWidth={width} areaHeight={mainContentHeight} />
         ) : null}
       </Box>
 

@@ -1,7 +1,7 @@
 import type { AppConfig } from '../config.js';
 import { getMagnetForTorrent, searchCliflixStyle } from '../search/cliflix-search.js';
 import { resolveTorrentId } from '../search/resolve-torrent-id.js';
-import type { TorrentEngine } from '../engine/torrent-engine.js';
+import type { EngineLike } from '../engine/engine-like.js';
 import { formatCategoryLabel, planDownloadLocation } from '../media/classify.js';
 import { formatBytes, formatEta, formatSpeed } from '../utils/format.js';
 
@@ -16,7 +16,7 @@ export type DownloadCommandOpts = {
 };
 
 export async function runDownloadCommand(
-  engine: TorrentEngine,
+  engine: EngineLike,
   config: AppConfig,
   opts: DownloadCommandOpts
 ): Promise<number> {

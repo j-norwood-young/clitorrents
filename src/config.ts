@@ -22,6 +22,15 @@ export function getSessionPath(): string {
   return path.join(getConfigDir(), 'session.json');
 }
 
+export function getDaemonPidPath(): string {
+  return path.join(getConfigDir(), 'daemon.pid');
+}
+
+export function getDaemonBaseUrl(config: AppConfig): string {
+  const daemon = DaemonConfigSchema.parse(config.daemon ?? {});
+  return `http://${daemon.host}:${daemon.port}`;
+}
+
 /** @deprecated use getConfigPath() */
 export const configPath = getConfigPath();
 /** @deprecated use getTorrentOverridesPath() */
@@ -50,10 +59,18 @@ export const CategoriesConfigSchema = z.object({
 
 export type CategoriesConfig = z.infer<typeof CategoriesConfigSchema>;
 
+export const DaemonConfigSchema = z.object({
+  host: z.string().default('127.0.0.1'),
+  port: z.number().int().positive().default(17359),
+});
+
+export type DaemonConfig = z.infer<typeof DaemonConfigSchema>;
+
 export const AppConfigSchema = z.object({
   /** When null/omitted, downloads use process.cwd() unless overridden in-app */
   downloadDir: z.string().nullable().optional(),
   categories: CategoriesConfigSchema.optional(),
+  daemon: DaemonConfigSchema.optional(),
   torrents: z.object({
     limit: z.number().int().positive().default(30),
     providers: z.object({
@@ -199,14 +216,6 @@ export function saveTorrentOverrides(data: TorrentOverridesFile): void {
   const p = getTorrentOverridesPath();
   fs.mkdirSync(path.dirname(p), { recursive: true });
   fs.writeFileSync(p, JSON.stringify(data, null, 2), 'utf8');
-}
-
-export function getSessionMtimeMs(): number | null {
-  try {
-    return fs.statSync(getSessionPath()).mtimeMs;
-  } catch {
-    return null;
-  }
 }
 
 export function loadSession(): SessionFile {

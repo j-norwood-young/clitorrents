@@ -1,6 +1,6 @@
 {
   "name": "clitorrents",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "description": "TUI torrent client",
   "type": "module",
   "bin": {
@@ -30,6 +30,13 @@
     "build": "tsc",
     "prepack": "npm run build",
     "start": "node dist/cli.js",
+    "daemon": "node dist/cli.js daemon",
+    "stop": "node dist/cli.js stop",
+    "status": "node dist/cli.js status",
+    "mcp": "node dist/cli.js mcp",
+    "search": "node dist/cli.js search",
+    "download": "node dist/cli.js download",
+    "help": "node dist/cli.js help",
     "test": "tsx --test 'src/**/*.test.ts' 'src/**/*.test.tsx'"
   },
   "engines": {

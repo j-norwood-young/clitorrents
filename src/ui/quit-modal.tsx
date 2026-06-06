@@ -30,7 +30,7 @@ export function QuitModal({
       <Text bold color="yellow">
         {state.message}
       </Text>
-      <Text dimColor>Stopping downloads and closing connections…</Text>
+      <Text dimColor>Downloads keep running in the background daemon.</Text>
       <Box flexDirection="column" marginTop={1}>
         {state.log.map((line, i) => {
           const current = i === state.log.length - 1;

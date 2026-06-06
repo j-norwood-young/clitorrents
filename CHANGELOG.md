@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-06-06
+
+### Added
+
+- Background **daemon** (`clitorrents daemon`) — single WebTorrent client shared by TUI, MCP, and CLI download
+- HTTP + **SSE** API on `127.0.0.1:17359` (configurable via `daemon.host` / `daemon.port`)
+- `clitorrents stop` and `clitorrents status` — graceful shutdown and daemon diagnostics (PID, uptime, transfers, SSE clients)
+- TUI and MCP auto-start the daemon when needed
+- npm scripts: `daemon`, `stop`, `status`, `mcp`, `search`, `download`, `help`
+
+### Changed
+
+- TUI and MCP are thin clients; no duplicate downloads or conflicting writers
+- Ctrl+Q closes the TUI only — transfers keep running in the daemon
+- Transfers panel shows compact `downloaded/total` sizes and status badges (`[↓%]`, `[‖]`, `[✓]`)
+
+### Removed
+
+- Cross-process `session.json` polling (replaced by single daemon + live SSE sync)
+
 ## [0.3.2] - 2026-06-06
 
 ### Added
@@ -86,6 +106,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Enter on results pane starts downloads instead of leaking into the search field
 - Settings fields are editable via Enter / Space / choice picker with visible save feedback
 
+[0.4.0]: https://github.com/j-norwood-young/clitorrents/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/j-norwood-young/clitorrents/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/j-norwood-young/clitorrents/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/j-norwood-young/clitorrents/compare/v0.2.0...v0.3.0
