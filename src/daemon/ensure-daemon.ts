@@ -31,14 +31,18 @@ export async function fetchDaemonState(baseUrl: string): Promise<DaemonState> {
   return (await res.json()) as DaemonState;
 }
 
-function daemonCliArgs(): string[] {
+function daemonSpawnArgs(): string[] {
+  // pkg bundles a single executable — re-exec it with the daemon subcommand.
+  if ('pkg' in process) {
+    return ['daemon'];
+  }
   const entry = fileURLToPath(new URL('../cli.js', import.meta.url));
   return [entry, 'daemon'];
 }
 
 export async function spawnDaemon(): Promise<void> {
-  const [entry, ...args] = daemonCliArgs();
-  const child = spawn(process.execPath, [entry, ...args], {
+  const args = daemonSpawnArgs();
+  const child = spawn(process.execPath, args, {
     detached: true,
     stdio: 'ignore',
     cwd: process.cwd(),

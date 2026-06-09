@@ -1,15 +1,6 @@
 #!/usr/bin/env node
-import { render } from 'ink';
-import { App } from './app.js';
 import { ensureConfigExists } from './config.js';
 import { parseCliArgs, printCliHelp } from './cli/parse-args.js';
-import { runSearchCommand } from './cli/search-cmd.js';
-import { runDownloadCommand } from './cli/download-cmd.js';
-import { runMcpServer } from './mcp/server.js';
-import { runDaemonCommand } from './cli/daemon-cmd.js';
-import { runStopDaemonCommand } from './cli/stop-daemon-cmd.js';
-import { runStatusCommand } from './cli/status-cmd.js';
-import { connectEngine } from './daemon/ensure-daemon.js';
 
 async function main(): Promise<void> {
   const parsed = parseCliArgs(process.argv.slice(2));
@@ -22,6 +13,7 @@ async function main(): Promise<void> {
   const config = ensureConfigExists();
 
   if (parsed.command === 'search') {
+    const { runSearchCommand } = await import('./cli/search-cmd.js');
     const code = await runSearchCommand(parsed.query, config, {
       provider: parsed.provider,
       limit: parsed.limit,
@@ -30,21 +22,26 @@ async function main(): Promise<void> {
   }
 
   if (parsed.command === 'daemon') {
+    const { runDaemonCommand } = await import('./cli/daemon-cmd.js');
     await runDaemonCommand(config);
     return;
   }
 
   if (parsed.command === 'stop') {
+    const { runStopDaemonCommand } = await import('./cli/stop-daemon-cmd.js');
     const code = await runStopDaemonCommand(config);
     process.exit(code);
   }
 
   if (parsed.command === 'status') {
+    const { runStatusCommand } = await import('./cli/status-cmd.js');
     const code = await runStatusCommand(config);
     process.exit(code);
   }
 
   if (parsed.command === 'download') {
+    const { connectEngine } = await import('./daemon/ensure-daemon.js');
+    const { runDownloadCommand } = await import('./cli/download-cmd.js');
     const engine = await connectEngine(config);
     const code = await runDownloadCommand(engine, config, parsed);
     engine.destroy();
@@ -52,11 +49,16 @@ async function main(): Promise<void> {
   }
 
   if (parsed.command === 'mcp') {
+    const { connectEngine } = await import('./daemon/ensure-daemon.js');
+    const { runMcpServer } = await import('./mcp/server.js');
     const engine = await connectEngine(config);
     await runMcpServer(engine, config);
     return;
   }
 
+  const { connectEngine } = await import('./daemon/ensure-daemon.js');
+  const { render } = await import('ink');
+  const { App } = await import('./app.js');
   const engine = await connectEngine(config);
   render(<App engine={engine} initialConfig={config} />);
 }
