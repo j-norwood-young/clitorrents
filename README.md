@@ -1,6 +1,25 @@
 # clitorrents
 
-Terminal UI for searching and downloading torrents.
+**Search, download, and manage torrents from your terminal — then hand the keys to your AI.**
+
+A fast, keyboard-driven TUI torrent client built on WebTorrent. Search across providers, watch live progress with sparklines and peer lists, route TV/movies/music into separate folders, and keep downloads running in a background daemon after you quit the UI.
+
+It also ships as an **[MCP server](https://modelcontextprotocol.io)**. Wire it into Cursor, Claude Desktop, [Hermes](https://github.com/NousResearch/hermes), [OpenClaw](https://github.com/openclaw/openclaw), or any MCP-capable agent and say things like *"download the latest Ubuntu ISO"* or *"grab Sintel in 1080p"* — totally legal stuff, of course.
+
+**Website:** [j-norwood-young.github.io/clitorrents](https://j-norwood-young.github.io/clitorrents/)
+
+## TUI in action
+
+<video src="docs/screenshots/tui.mp4" autoplay loop muted playsinline width="1100"></video>
+
+Search from the top pane, browse paginated results on the left, and monitor active transfers (with sparklines) on the right. Press **Tab** to move between panes, **Enter** to search or add a torrent, **Ctrl+Q** to quit — downloads keep running in the background.
+
+<details>
+<summary>Animated GIF (fallback)</summary>
+
+![clitorrents TUI — search, results, and transfers](docs/screenshots/tui.gif)
+
+</details>
 
 ## Quickstart
 
@@ -178,7 +197,7 @@ Search is always editable — type anytime without switching modes.
 
 ## MCP server
 
-The MCP server connects to the same background daemon as the TUI (auto-started on first use).
+The MCP server connects to the same background daemon as the TUI (auto-started on first use). Wire it into Cursor, Claude Desktop, [Hermes](https://github.com/NousResearch/hermes), or [OpenClaw](https://github.com/openclaw/openclaw) and your agent can search, add, pause, and monitor torrents for you.
 
 ```bash
 clitorrents mcp
@@ -258,3 +277,11 @@ Runs unit tests for config, media classification, connectivity monitoring, CLI p
 ## Development reference
 
 The `cliflix/` directory is a vendored copy of the original Cliflix app for comparison only; this project does not depend on it at runtime.
+
+## Updating screenshots
+
+Record a screencast, then convert with ffmpeg:
+
+```bash
+./docs/screenshots/convert-capture.sh clitorrents-capture.mov
+```

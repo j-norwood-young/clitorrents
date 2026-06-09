@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clitorrents — TUI torrent client &amp; MCP server</title>
+  <meta name="description" content="Search and download torrents from a gorgeous terminal UI — or let your AI agent handle it via MCP. Totally legal content only. Obviously.">
+  <meta name="theme-color" content="#070b10">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⬇</text></svg>">
+</head>
+<body>
+  <header class="site-header">
+    <div class="container">
+      <a class="logo" href="#">clitorrents<span>.</span></a>
+      <nav>
+        <ul class="nav-links">
+          <li><a href="#modes">TUI &amp; MCP</a></li>
+          <li><a href="#demo">Demo</a></li>
+          <li><a href="#features">Features</a></li>
+          <li><a href="#install">Install</a></li>
+          <li><a href="https://github.com/j-norwood-young/clitorrents">GitHub</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="container hero-grid">
+        <div class="hero-copy">
+          <div class="hero-badges">
+            <span class="badge badge-cyan">Terminal UI</span>
+            <span class="badge badge-green">MCP Server</span>
+            <span class="badge badge-amber">Node 20+</span>
+          </div>
+          <h1>
+            The torrent client your<br>
+            <span class="highlight">terminal deserves.</span>
+          </h1>
+          <p class="hero-lead">
+            <strong>Clitorrents</strong> is a fast, opinionated torrent client with a gorgeous TUI
+            <em>and</em> a full MCP server — so you can search from the keyboard, or tell Hermes
+            to grab that <em>totally legal</em> documentary for tonight.
+          </p>
+          <div class="cta-row">
+            <a class="btn btn-primary" href="#install">Get started</a>
+            <a class="btn btn-ghost" href="https://github.com/j-norwood-young/clitorrents">View on GitHub</a>
+            <span class="version-tag">v0.4.1</span>
+          </div>
+        </div>
+
+        <figure class="hero-media">
+          <div class="hero-shots">
+            <div class="terminal-window hero-shot hero-shot-back">
+              <div class="terminal-titlebar">
+                <span class="terminal-dot terminal-dot-red"></span>
+                <span class="terminal-dot terminal-dot-yellow"></span>
+                <span class="terminal-dot terminal-dot-green"></span>
+                <span class="terminal-title">clitorrents</span>
+              </div>
+              <img
+                src="screenshots/tui-end.png"
+                alt="Clitorrents TUI showing active transfers and download progress"
+                width="1100"
+                height="670"
+                loading="eager"
+              >
+            </div>
+            <div class="terminal-window hero-shot hero-shot-front">
+              <div class="terminal-titlebar">
+                <span class="terminal-dot terminal-dot-red"></span>
+                <span class="terminal-dot terminal-dot-yellow"></span>
+                <span class="terminal-dot terminal-dot-green"></span>
+                <span class="terminal-title">clitorrents</span>
+              </div>
+              <img
+                src="screenshots/tui-start.png"
+                alt="Clitorrents TUI loading screen"
+                width="1100"
+                height="670"
+                loading="eager"
+              >
+            </div>
+          </div>
+        </figure>
+      </div>
+    </section>
+
+    <hr class="divider">
+
+    <section id="modes">
+      <div class="container">
+        <p class="section-label">Two ways to torrent</p>
+        <h2 class="section-title">Keyboard warrior or AI delegator. Your call.</h2>
+        <p class="section-intro">
+          Same background daemon, same downloads, same impeccable taste in Creative Commons cinema.
+          Use the TUI when you want to feel powerful. Use MCP when you'd rather outsource the vibe check to your agent.
+        </p>
+
+        <div class="dual-grid">
+          <article class="mode-card mode-card-tui">
+            <div class="mode-icon" aria-hidden="true">⌨️</div>
+            <h3>Terminal User Interface</h3>
+            <p>
+              A full-featured TUI built with Ink. Search providers, browse results, manage transfers,
+              tweak ratios, and open your download folder — all without leaving the terminal.
+            </p>
+            <ul>
+              <li>Tab through Search → Results → Transfers</li>
+              <li>Sparklines, peer lists, and ETA porn</li>
+              <li>Ctrl+Q quits the UI; downloads keep running</li>
+              <li>Ctrl+O opens the settings editor inline</li>
+            </ul>
+          </article>
+
+          <article class="mode-card mode-card-mcp">
+            <div class="mode-icon" aria-hidden="true">🤖</div>
+            <h3>MCP Server</h3>
+            <p>
+              Plug Clitorrents into Cursor, Claude Desktop, OpenClaw, Hermes — whatever speaks MCP.
+              Your agent gets tools to search, add, pause, and monitor torrents while you pretend to work.
+            </p>
+            <ul>
+              <li><code>search</code>, <code>add_torrent</code>, <code>list_transfers</code></li>
+              <li>Live status via the same background daemon</li>
+              <li>One-line <code>npx</code> setup — no install required</li>
+              <li>Perfect for "find me something legal to watch tonight"</li>
+            </ul>
+          </article>
+        </div>
+
+        <div class="agent-panel">
+          <div class="agent-header">Hermes · MCP connected · clitorrents</div>
+          <div class="agent-messages">
+            <div class="msg msg-user">
+              Hey, can you find a totally legal copy of Sintel and start downloading it? I have rights. Probably.
+            </div>
+            <div class="msg msg-agent">
+              On it. Searching providers… found 12 results. Adding <code>Sintel (2010) [1080p]</code> to your Movies folder.
+              <div class="msg-footnote">Download started. ETA ~6 minutes. I'll ping you when it's ready for popcorn.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <hr class="divider">
+
+    <section id="demo">
+      <div class="container">
+        <p class="section-label">Demo</p>
+        <h2 class="section-title">See it in action</h2>
+        <p class="section-intro">
+          Search, add, and monitor transfers — all from one keyboard-driven layout.
+        </p>
+
+        <figure class="demo-figure">
+          <div class="terminal-window">
+            <div class="terminal-titlebar">
+              <span class="terminal-dot terminal-dot-red"></span>
+              <span class="terminal-dot terminal-dot-yellow"></span>
+              <span class="terminal-dot terminal-dot-green"></span>
+              <span class="terminal-title">clitorrents</span>
+            </div>
+            <video
+              src="screenshots/tui.mp4"
+              poster="screenshots/tui-start.png"
+              autoplay
+              loop
+              muted
+              playsinline
+              aria-label="Clitorrents TUI demo — search, results, and transfers"
+            ></video>
+          </div>
+          <figcaption>
+            <strong>Full walkthrough</strong> — from splash screen to live downloads
+          </figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <hr class="divider">
+
+    <section id="features">
+      <div class="container">
+        <p class="section-label">Under the hood</p>
+        <h2 class="section-title">Incredible. Also, practical.</h2>
+        <p class="section-intro">
+          Clitorrents isn't just a pretty face in monospace. There's a proper architecture underneath —
+          because someone has to keep seeding while you're in a meeting.
+        </p>
+
+        <div class="features-grid">
+          <div class="feature-card">
+            <h4>Background daemon</h4>
+            <p>One WebTorrent engine on <code>127.0.0.1:17359</code>. TUI, MCP, and CLI all connect to it. Close the UI; downloads continue.</p>
+          </div>
+          <div class="feature-card">
+            <h4>SSE live updates</h4>
+            <p>Server-Sent Events push transfer progress in real time. No websocket drama. Just vibes and throughput.</p>
+          </div>
+          <div class="feature-card">
+            <h4>Smart categories</h4>
+            <p>Auto-route TV, movies, and music to separate folders based on torrent name heuristics. Your NAS will thank you.</p>
+          </div>
+          <div class="feature-card">
+            <h4>Provider search</h4>
+            <p>Multi-provider fallback search. When one indexer is having a day, Clitorrents tries the next one.</p>
+          </div>
+          <div class="feature-card">
+            <h4>Ratio &amp; limits</h4>
+            <p>Per-torrent ratio caps, global bandwidth throttles, and sensible seed-stop policies. Seed responsibly.</p>
+          </div>
+          <div class="feature-card">
+            <h4>Offline-aware</h4>
+            <p>Detects network loss, pauses torrents, and polls gently until you're back online. Laptop-friendly.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <hr class="divider">
+
+    <section id="install">
+      <div class="container">
+        <p class="section-label">Get it running</p>
+        <h2 class="section-title">Three commands to glory</h2>
+        <p class="section-intro">
+          No install required if you're feeling lazy. Homebrew if you're feeling civilised.
+          Global npm if you're feeling committed.
+        </p>
+
+        <div class="install-tabs" role="tablist">
+          <button class="install-tab active" role="tab" aria-selected="true" data-tab="npx">npx</button>
+          <button class="install-tab" role="tab" aria-selected="false" data-tab="brew">Homebrew</button>
+          <button class="install-tab" role="tab" aria-selected="false" data-tab="npm">npm</button>
+          <button class="install-tab" role="tab" aria-selected="false" data-tab="mcp">MCP config</button>
+        </div>
+
+        <div class="code-block">
+          <div class="code-panel active" id="panel-npx" role="tabpanel">
+            <pre><span class="comment"># Run the TUI — zero install</span>
+npx clitorrents
+
+<span class="comment"># Or kick off the MCP server</span>
+npx clitorrents mcp</pre>
+          </div>
+          <div class="code-panel" id="panel-brew" role="tabpanel">
+            <pre><span class="comment"># macOS and Linux</span>
+brew install j-norwood-young/tap/clitorrents
+
+clitorrents</pre>
+          </div>
+          <div class="code-panel" id="panel-npm" role="tabpanel">
+            <pre>npm install -g clitorrents
+
+clitorrents
+clitorrents search "creative commons documentary" --limit 10
+clitorrents download sintel --pick 1 --dir ./downloads</pre>
+          </div>
+          <div class="code-panel" id="panel-mcp" role="tabpanel">
+            <pre><span class="comment">// Cursor (.cursor/mcp.json) or Claude Desktop config</span>
+{
+  "mcpServers": {
+    "clitorrents": {
+      "command": "npx",
+      "args": ["-y", "clitorrents", "mcp"]
+    }
+  }
+}</pre>
+          </div>
+        </div>
+
+        <p class="install-note">
+          Requires Node.js 20+. The daemon auto-starts on first use. Stop everything with
+          <code>clitorrents stop</code>.
+        </p>
+
+        <div style="margin-top: 2.5rem;">
+          <p class="section-label">MCP tools</p>
+          <div class="tools-grid">
+            <span class="tool-chip">search</span>
+            <span class="tool-chip">add_torrent</span>
+            <span class="tool-chip">list_transfers</span>
+            <span class="tool-chip">transfer_status</span>
+            <span class="tool-chip">pause_torrent</span>
+            <span class="tool-chip">resume_torrent</span>
+            <span class="tool-chip">remove_torrent</span>
+            <span class="tool-chip">set_limits</span>
+            <span class="tool-chip">get_config</span>
+            <span class="tool-chip">set_config</span>
+          </div>
+        </div>
+
+        <div class="disclaimer" style="margin-top: 2.5rem;">
+          <strong>Legal notice:</strong> Clitorrents is a tool. Use it only for content you have the right to access.
+          We are very pro "totally legal movies" and very anti "please don't sue us." You know the drill.
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-grid">
+      <div class="footer-brand">
+        clitorrents<br>
+        MIT · Built with WebTorrent, Ink, and questionable life choices
+      </div>
+      <ul class="footer-links">
+        <li><a href="https://github.com/j-norwood-young/clitorrents">GitHub</a></li>
+        <li><a href="https://www.npmjs.com/package/clitorrents">npm</a></li>
+        <li><a href="https://github.com/j-norwood-young/homebrew-tap">Homebrew tap</a></li>
+        <li><a href="https://github.com/j-norwood-young/clitorrents/issues">Issues</a></li>
+      </ul>
+      <p class="footer-copy">
+        Ctrl+Q closes the TUI. Your downloads keep running. We're not monsters.
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    document.querySelectorAll('.install-tab').forEach((tab) => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.install-tab').forEach((t) => {
+          t.classList.remove('active');
+          t.setAttribute('aria-selected', 'false');
+        });
+        document.querySelectorAll('.code-panel').forEach((p) => p.classList.remove('active'));
+        tab.classList.add('active');
+        tab.setAttribute('aria-selected', 'true');
+        document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
+      });
+    });
+  </script>
+</body>
+</html>

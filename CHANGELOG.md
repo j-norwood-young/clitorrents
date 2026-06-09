@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-06-09
+
+### Added
+
+- **GitHub Pages** landing site at [j-norwood-young.github.io/clitorrents](https://j-norwood-young.github.io/clitorrents/)
+- Screencast demo, hero screenshots, and `convert-capture.sh` for regenerating site assets
+
+### Changed
+
+- README demo media and homepage URL
+
 ## [0.4.0] - 2026-06-06
 
 ### Added
@@ -106,6 +117,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Enter on results pane starts downloads instead of leaking into the search field
 - Settings fields are editable via Enter / Space / choice picker with visible save feedback
 
+[0.4.1]: https://github.com/j-norwood-young/clitorrents/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/j-norwood-young/clitorrents/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/j-norwood-young/clitorrents/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/j-norwood-young/clitorrents/compare/v0.3.0...v0.3.1

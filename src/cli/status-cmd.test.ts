@@ -7,7 +7,7 @@ describe('formatDaemonStatus', () => {
   it('prints pid, uptime, transfers, and SSE clients', () => {
     const status: DaemonStatus = {
       running: true,
-      version: '0.4.0',
+      version: '0.4.1',
       pid: 4242,
       startedAt: new Date().toISOString(),
       uptimeMs: 125_000,
@@ -31,7 +31,7 @@ describe('formatDaemonStatus', () => {
   it('shows placeholders when uptime and clients are unavailable', () => {
     const status: DaemonStatus = {
       running: true,
-      version: '0.4.0',
+      version: '0.4.1',
       pid: 4242,
       startedAt: '',
       url: 'http://127.0.0.1:17359',

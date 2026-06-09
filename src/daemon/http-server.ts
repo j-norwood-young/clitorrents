@@ -96,7 +96,7 @@ export function createDaemonServer(
 
     try {
       if (method === 'GET' && path === '/api/health') {
-        json(res, 200, { ok: true, version: '0.4.0' });
+        json(res, 200, { ok: true, version: '0.4.1' });
         return;
       }
 
@@ -104,7 +104,7 @@ export function createDaemonServer(
         const pidFile = readDaemonPid();
         json(res, 200, {
           running: true,
-          version: '0.4.0',
+          version: '0.4.1',
           pid: process.pid,
           startedAt: new Date(startedAt).toISOString(),
           uptimeMs: Date.now() - startedAt,
