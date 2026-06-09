@@ -66,8 +66,6 @@ jobs:
         include:
           - runner: macos-latest
             platform: darwin-arm64
-          - runner: macos-13
-            platform: darwin-x64
           - runner: ubuntu-latest
             platform: linux-x64
     runs-on: ${{ matrix.runner }}
@@ -82,12 +80,9 @@ jobs:
           cache: npm
 
       - name: Package release tarball
-        id: package
-        continue-on-error: ${{ matrix.platform == 'darwin-x64' }}
         run: ./scripts/package-release.sh "${{ env.TAG }}" "${{ matrix.platform }}"
 
       - uses: actions/upload-artifact@v5
-        if: steps.package.outcome == 'success'
         with:
           name: clitorrents-${{ matrix.platform }}
           path: clitorrents-*-${{ matrix.platform }}.tar.gz
