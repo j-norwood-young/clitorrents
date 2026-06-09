@@ -99,6 +99,11 @@ jobs:
     needs: [publish-npm, build-tarballs]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.TAG }}
+          fetch-depth: 0
+
       - uses: actions/download-artifact@v5
         with:
           path: artifacts
