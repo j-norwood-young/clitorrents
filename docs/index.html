@@ -35,7 +35,6 @@
           <div class="hero-badges">
             <span class="badge badge-cyan">Terminal UI</span>
             <span class="badge badge-green">MCP Server</span>
-            <span class="badge badge-amber">Node 20+</span>
           </div>
           <h1>
             The torrent client your<br>
@@ -195,7 +194,7 @@
     <section id="install">
       <div class="container">
         <p class="section-label">Get it running</p>
-        <h2 class="section-title">Three commands to glory</h2>
+        <h2 class="section-title">Commands to glory</h2>
         <p class="section-intro">
           No install required if you're feeling lazy. Homebrew if you're feeling civilised.
           Global npm if you're feeling committed.
@@ -208,37 +207,110 @@
           <button class="install-tab" role="tab" aria-selected="false" data-tab="mcp">MCP config</button>
         </div>
 
-        <div class="code-block">
+        <div class="cli-block">
           <div class="code-panel active" id="panel-npx" role="tabpanel">
-            <pre><span class="comment"># Run the TUI — zero install</span>
-npx clitorrents
-
-<span class="comment"># Or kick off the MCP server</span>
-npx clitorrents mcp</pre>
+            <div class="cli-window">
+              <div class="cli-titlebar">
+                <span class="cli-dot cli-dot-red"></span>
+                <span class="cli-dot cli-dot-yellow"></span>
+                <span class="cli-dot cli-dot-green"></span>
+                <span class="cli-title">bash — clitorrents</span>
+                <button type="button" class="cli-copy-all" data-copy-panel="panel-npx">Copy all</button>
+              </div>
+              <div class="cli-body">
+                <p class="cli-comment"># Run the TUI — zero install</p>
+                <div class="cli-line">
+                  <span class="cli-prompt" aria-hidden="true">$</span>
+                  <code class="cli-cmd">npx clitorrents</code>
+                  <button type="button" class="cli-copy" data-copy="npx clitorrents" aria-label="Copy npx clitorrents">copy</button>
+                </div>
+                <p class="cli-comment"># Or kick off the MCP server</p>
+                <div class="cli-line">
+                  <span class="cli-prompt" aria-hidden="true">$</span>
+                  <code class="cli-cmd">npx clitorrents mcp</code>
+                  <button type="button" class="cli-copy" data-copy="npx clitorrents mcp" aria-label="Copy npx clitorrents mcp">copy</button>
+                </div>
+              </div>
+            </div>
           </div>
           <div class="code-panel" id="panel-brew" role="tabpanel">
-            <pre><span class="comment"># macOS and Linux</span>
-brew install j-norwood-young/tap/clitorrents
-
-clitorrents</pre>
+            <div class="cli-window">
+              <div class="cli-titlebar">
+                <span class="cli-dot cli-dot-red"></span>
+                <span class="cli-dot cli-dot-yellow"></span>
+                <span class="cli-dot cli-dot-green"></span>
+                <span class="cli-title">bash — homebrew</span>
+                <button type="button" class="cli-copy-all" data-copy-panel="panel-brew">Copy all</button>
+              </div>
+              <div class="cli-body">
+                <p class="cli-comment"># macOS and Linux</p>
+                <div class="cli-line">
+                  <span class="cli-prompt" aria-hidden="true">$</span>
+                  <code class="cli-cmd">brew install j-norwood-young/tap/clitorrents</code>
+                  <button type="button" class="cli-copy" data-copy="brew install j-norwood-young/tap/clitorrents" aria-label="Copy brew install command">copy</button>
+                </div>
+                <div class="cli-line">
+                  <span class="cli-prompt" aria-hidden="true">$</span>
+                  <code class="cli-cmd">clitorrents</code>
+                  <button type="button" class="cli-copy" data-copy="clitorrents" aria-label="Copy clitorrents">copy</button>
+                </div>
+              </div>
+            </div>
           </div>
           <div class="code-panel" id="panel-npm" role="tabpanel">
-            <pre>npm install -g clitorrents
-
-clitorrents
-clitorrents search "creative commons documentary" --limit 10
-clitorrents download sintel --pick 1 --dir ./downloads</pre>
+            <div class="cli-window">
+              <div class="cli-titlebar">
+                <span class="cli-dot cli-dot-red"></span>
+                <span class="cli-dot cli-dot-yellow"></span>
+                <span class="cli-dot cli-dot-green"></span>
+                <span class="cli-title">bash — npm global</span>
+                <button type="button" class="cli-copy-all" data-copy-panel="panel-npm">Copy all</button>
+              </div>
+              <div class="cli-body">
+                <div class="cli-line">
+                  <span class="cli-prompt" aria-hidden="true">$</span>
+                  <code class="cli-cmd">npm install -g clitorrents</code>
+                  <button type="button" class="cli-copy" data-copy="npm install -g clitorrents" aria-label="Copy npm install command">copy</button>
+                </div>
+                <div class="cli-line">
+                  <span class="cli-prompt" aria-hidden="true">$</span>
+                  <code class="cli-cmd">clitorrents</code>
+                  <button type="button" class="cli-copy" data-copy="clitorrents" aria-label="Copy clitorrents">copy</button>
+                </div>
+                <div class="cli-line">
+                  <span class="cli-prompt" aria-hidden="true">$</span>
+                  <code class="cli-cmd">clitorrents search "creative commons documentary" --limit 10</code>
+                  <button type="button" class="cli-copy" data-copy='clitorrents search "creative commons documentary" --limit 10' aria-label="Copy search command">copy</button>
+                </div>
+                <div class="cli-line">
+                  <span class="cli-prompt" aria-hidden="true">$</span>
+                  <code class="cli-cmd">clitorrents download sintel --pick 1 --dir ./downloads</code>
+                  <button type="button" class="cli-copy" data-copy="clitorrents download sintel --pick 1 --dir ./downloads" aria-label="Copy download command">copy</button>
+                </div>
+              </div>
+            </div>
           </div>
           <div class="code-panel" id="panel-mcp" role="tabpanel">
-            <pre><span class="comment">// Cursor (.cursor/mcp.json) or Claude Desktop config</span>
-{
+            <div class="cli-window">
+              <div class="cli-titlebar">
+                <span class="cli-dot cli-dot-red"></span>
+                <span class="cli-dot cli-dot-yellow"></span>
+                <span class="cli-dot cli-dot-green"></span>
+                <span class="cli-title">json — mcp.json</span>
+                <button type="button" class="cli-copy-all" data-copy-panel="panel-mcp">Copy all</button>
+              </div>
+              <div class="cli-body cli-body-json">
+                <p class="cli-comment">// Cursor (.cursor/mcp.json) or Claude Desktop config</p>
+                <pre class="cli-json"><code>{
   "mcpServers": {
     "clitorrents": {
       "command": "npx",
       "args": ["-y", "clitorrents", "mcp"]
     }
   }
-}</pre>
+}</code></pre>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -301,6 +373,46 @@ clitorrents download sintel --pick 1 --dir ./downloads</pre>
         tab.setAttribute('aria-selected', 'true');
         document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
       });
+    });
+
+    async function copyText(text, button) {
+      try {
+        await navigator.clipboard.writeText(text);
+      } catch {
+        const area = document.createElement('textarea');
+        area.value = text;
+        area.style.position = 'fixed';
+        area.style.left = '-9999px';
+        document.body.appendChild(area);
+        area.select();
+        document.execCommand('copy');
+        area.remove();
+      }
+
+      const label = button.textContent;
+      button.textContent = 'copied!';
+      button.classList.add('copied');
+      setTimeout(() => {
+        button.textContent = label;
+        button.classList.remove('copied');
+      }, 1400);
+    }
+
+    document.addEventListener('click', (event) => {
+      const copyBtn = event.target.closest('.cli-copy');
+      if (copyBtn?.dataset.copy) {
+        copyText(copyBtn.dataset.copy, copyBtn);
+        return;
+      }
+
+      const copyAllBtn = event.target.closest('.cli-copy-all');
+      if (!copyAllBtn?.dataset.copyPanel) return;
+
+      const panel = document.getElementById(copyAllBtn.dataset.copyPanel);
+      const lines = [...panel.querySelectorAll('.cli-cmd')].map((el) => el.textContent.trim());
+      const json = panel.querySelector('.cli-json code');
+      const text = json ? json.textContent.trim() : lines.join('\n');
+      copyText(text, copyAllBtn);
     });
   </script>
 </body>
