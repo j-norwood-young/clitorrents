@@ -1,0 +1,29 @@
+name: Update Homebrew formula
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  bump-formula:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out homebrew-tap
+        uses: actions/checkout@v4
+        with:
+          repository: j-norwood-young/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
+
+      - name: Bump clitorrents formula
+        working-directory: homebrew-tap
+        run: |
+          VERSION="${{ github.event.release.tag_name }}"
+          ./scripts/bump-clitorrents.sh "$VERSION"
+
+      - name: Commit formula update
+        working-directory: homebrew-tap
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore(clitorrents): bump to ${{ github.event.release.tag_name }}"
+          file_pattern: Formula/clitorrents.rb

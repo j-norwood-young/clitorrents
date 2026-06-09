@@ -18,6 +18,16 @@ Requires Node.js 20+. No install needed — `npx` downloads and runs the latest 
 
 ## Install
 
+### Homebrew (macOS and Linux)
+
+```bash
+brew install j-norwood-young/tap/clitorrents
+```
+
+This installs the `clitorrents` command and pulls in Node.js as a dependency.
+
+### npm
+
 Install globally from npm:
 
 ```bash
