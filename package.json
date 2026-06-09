@@ -37,6 +37,7 @@
     "search": "node dist/cli.js search",
     "download": "node dist/cli.js download",
     "help": "node dist/cli.js help",
+    "docs": "serve docs -l 8765",
     "test": "tsx --test 'src/**/*.test.ts' 'src/**/*.test.tsx'"
   },
   "engines": {
@@ -56,6 +57,7 @@
     "@types/node": "^25.0.10",
     "@types/react": "^19.2.9",
     "ink-testing-library": "^4.0.0",
+    "serve": "^14.2.6",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   }

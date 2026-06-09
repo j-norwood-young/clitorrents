@@ -1,0 +1,15 @@
+---
+description: Keep the docs site version badge in sync with package.json
+globs: package.json
+alwaysApply: false
+---
+
+# Version sync
+
+When changing the `version` field in `package.json`, also update the hero badge on the docs site:
+
+- **File:** `docs/index.html`
+- **Element:** `<span class="version-tag">v…</span>` in the hero CTA row
+- **Format:** prefix with `v` (e.g. package `0.4.2` → page `v0.4.2`)
+
+Do not leave a version bump in `package.json` without updating this badge in the same change.
