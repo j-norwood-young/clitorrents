@@ -19,6 +19,7 @@ mkdir -p "$STAGE"
 cp package.json "$STAGE/"
 cp -R dist "$STAGE/"
 cp -R node_modules "$STAGE/"
+chmod 0755 "$STAGE"/dist/*.js
 
 tar -czf "${STAGE}.tar.gz" "$STAGE"
 sha256sum "${STAGE}.tar.gz"
