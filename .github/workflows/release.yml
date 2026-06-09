@@ -54,9 +54,17 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - run: npm ci
-      - run: npm publish --provenance --access public
+
+      - name: Publish to npm
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if npm view "clitorrents@${VERSION}" version >/dev/null 2>&1; then
+            echo "clitorrents@${VERSION} is already on npm — skipping publish"
+          else
+            npm publish --provenance --access public
+          fi
 
   build-tarballs:
     needs: test
