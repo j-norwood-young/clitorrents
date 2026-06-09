@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out homebrew-tap
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: j-norwood-young/homebrew-tap
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
@@ -23,7 +23,7 @@ jobs:
 
       - name: Commit formula update
         working-directory: homebrew-tap
-        uses: stefanzweifel/git-auto-commit-action@v5
+        uses: stefanzweifel/git-auto-commit-action@v7
         with:
           commit_message: "chore(clitorrents): bump to ${{ github.event.release.tag_name }}"
           file_pattern: Formula/clitorrents.rb
