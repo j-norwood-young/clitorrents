@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-10-20
+
+### Added
+
+- **Daemon panel** (Ctrl+D) in the TUI — view daemon status and start (`s`), stop (`x`), or restart (`r`) it
+- Live **share ratios** in the transfers list and detail view
+- **Search history** — ↑↓ in the search box recalls previous queries (up to 100, saved to `search-history.json`)
+- Shift+Tab cycles focus backwards; Esc clears the search box
+- `npm run dev` to run the TUI from source via `tsx`
+- Test suite (unit, integration, e2e) running offline against a local mock torrent swarm; `test:e2e`, `test:coverage`, `typecheck`, and `mock-server` scripts
+
+### Changed
+
+- Engine client tracks daemon connectivity; pause/resume are awaitable
+- Transfers list selection and separator styling
+- **Requires Node.js 22+** (was 20+)
+- **WebTorrent 3** — fixes port/connection exhaustion in long-running daemons, protocol-encryption (PE/MSE) fixes, faster uTP, and no longer errors on fractional download throttles
+- Dependencies: ink 8, React 19.3, zod 4.6, TypeScript 7, `@types/node` 26 (`tsconfig.json` now sets `types: ["node"]` explicitly, as TypeScript 7 no longer auto-includes `@types`)
+
+### Fixed
+
+- Fresh installs no longer crash when seeding: webtorrent 2.8.5 broke with `uint8-util` 2.3.x (`ERR_INVALID_ARG_TYPE`), which webtorrent 3 supports
+- Daemon no longer crashes on startup when the WebTorrent client errors (e.g. the torrent port fails to bind or trackers are unreachable)
+
+## [0.4.2] - 2026-06-09
+
+### Changed
+
+- CLI commands load via dynamic imports for faster startup
+- Release workflow: npm auth, manual retry, skip already-published versions, restored Intel macOS builds
+- Docs site install section and hero media polish
+
 ## [0.4.1] - 2026-06-09
 
 ### Added

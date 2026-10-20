@@ -27,13 +27,13 @@ Search from the top pane, browse paginated results on the left, and monitor acti
 npx clitorrents
 ```
 
-Requires Node.js 20+. No install needed — `npx` downloads and runs the latest release.
+Requires Node.js 22+. No install needed — `npx` downloads and runs the latest release.
 
 **Warning:** Only use this for content you have the right to access.
 
 ## Requirements
 
-- Node.js 20+
+- Node.js 22+
 
 ## Install
 
