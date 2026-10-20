@@ -8,7 +8,7 @@ export type HotkeyHelpContext = {
   compact?: boolean;
 };
 
-const GLOBAL = 'Tab / Shift+Tab pane · Ctrl+O settings · Ctrl+Q quit';
+const GLOBAL = 'Tab / Shift+Tab pane · Ctrl+O settings · Ctrl+D daemon · Ctrl+Q quit';
 const LIMITS = ',/. DL cap · <> UL cap · { } default ratio';
 
 export function getHotkeyHelp(ctx: HotkeyHelpContext): string {
@@ -28,6 +28,12 @@ export function getHotkeyHelp(ctx: HotkeyHelpContext): string {
     return compact
       ? '↑↓ · Enter · Space · Esc save · Ctrl+Q quit'
       : `↑↓ field · Enter edit/choose · Space toggle bool · Esc save & back · ${GLOBAL}`;
+  }
+
+  if (view.kind === 'daemon') {
+    return compact
+      ? 's · x · r · Esc · Ctrl+Q'
+      : 's start · x stop · r restart · Esc back · Ctrl+Q quit (daemon keeps running)';
   }
 
   if (view.kind === 'detail') {

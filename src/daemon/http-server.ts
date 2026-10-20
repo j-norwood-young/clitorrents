@@ -190,7 +190,7 @@ export function createDaemonServer(
         const body = await readJson<{ infoHash?: string }>(req);
         engine.pauseDownload(String(body.infoHash ?? ''));
         pushState();
-        json(res, 200, { ok: true });
+        json(res, 200, { ok: true, state: buildState(engine) });
         return;
       }
 
@@ -198,7 +198,7 @@ export function createDaemonServer(
         const body = await readJson<{ infoHash?: string }>(req);
         engine.resumeDownload(String(body.infoHash ?? ''));
         pushState();
-        json(res, 200, { ok: true });
+        json(res, 200, { ok: true, state: buildState(engine) });
         return;
       }
 
@@ -280,6 +280,10 @@ export function createDaemonServer(
         server.close(() => {
           opts?.onShutdown?.();
         });
+        // close() waits for open connections; SSE streams never end on their own.
+        for (const client of sseClients) client.end();
+        sseClients.clear();
+        server.closeIdleConnections();
         return;
       }
 

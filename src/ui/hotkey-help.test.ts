@@ -24,4 +24,15 @@ describe('getHotkeyHelp', () => {
     });
     assert.match(help, /confirm/);
   });
+
+  it('shows daemon controls in daemon view', () => {
+    const help = getHotkeyHelp({ view: { kind: 'daemon' }, focus: 'search', configEditing: false, configPickerOpen: false });
+    assert.match(help, /r restart/);
+    assert.match(help, /x stop/);
+  });
+
+  it('advertises the daemon panel globally', () => {
+    const help = getHotkeyHelp({ view: { kind: 'main' }, focus: 'search', configEditing: false, configPickerOpen: false });
+    assert.match(help, /Ctrl\+D daemon/);
+  });
 });

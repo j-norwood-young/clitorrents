@@ -68,7 +68,28 @@ export function TransfersList({
                 ? 'Paused'
                 : `${formatSpeed(s.downloadSpeed)} ETA ${formatEta(s.timeRemaining)}`;
           return (
-            <Box key={s.infoHash} flexDirection="column" marginBottom={0}>
+            <React.Fragment key={s.infoHash}>
+            {j > 0 ? (
+              <Box
+                borderStyle="single"
+                borderTop
+                borderBottom={false}
+                borderLeft={false}
+                borderRight={false}
+                borderColor="gray"
+                borderDimColor
+              />
+            ) : null}
+            <Box
+              flexDirection="column"
+              borderStyle="bold"
+              borderTop={false}
+              borderBottom={false}
+              borderRight={false}
+              borderLeft={selected}
+              borderColor="green"
+              paddingLeft={selected ? 0 : 1}
+            >
               <Box flexDirection="row">
                 <Text color={statusBadgeColor(s)} bold={paused}>
                   {badge}{' '}
@@ -93,6 +114,7 @@ export function TransfersList({
                 )}
               </Text>
             </Box>
+            </React.Fragment>
           );
         })
       )}

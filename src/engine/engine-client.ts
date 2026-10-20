@@ -11,12 +11,17 @@ import type {
 import { parseSseBlock } from '../daemon/sse.js';
 import type { DaemonState } from '../daemon/http-server.js';
 
+/** Never rejects: an unreachable daemon yields a 503 so fire-and-forget callers can't crash the process. */
 async function postJson(baseUrl: string, path: string, body: unknown): Promise<Response> {
-  return fetch(`${baseUrl}${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  try {
+    return await fetch(`${baseUrl}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    return Response.json({ error: 'Daemon is not running' }, { status: 503 });
+  }
 }
 
 export class EngineClient extends EventEmitter implements EngineLike {
@@ -24,6 +29,7 @@ export class EngineClient extends EventEmitter implements EngineLike {
   private state: DaemonState;
   private sseAbort: AbortController | null = null;
   private connected = false;
+  private daemonConnected = true;
 
   constructor(baseUrl: string, initialState: DaemonState) {
     super();
@@ -35,7 +41,28 @@ export class EngineClient extends EventEmitter implements EngineLike {
     if (this.connected) return;
     this.connected = true;
     this.sseAbort = new AbortController();
-    void this.readEvents(this.sseAbort.signal);
+    void this.eventLoop(this.sseAbort.signal);
+  }
+
+  /** False while the daemon is unreachable (stopped, restarting, or crashed). */
+  isDaemonConnected(): boolean {
+    return this.daemonConnected;
+  }
+
+  private setDaemonConnected(next: boolean): void {
+    if (this.daemonConnected === next) return;
+    this.daemonConnected = next;
+    this.emit('daemon', next ? 'connected' : 'disconnected');
+  }
+
+  /** Keep the SSE stream open, reconnecting after daemon restarts. */
+  private async eventLoop(signal: AbortSignal): Promise<void> {
+    while (!signal.aborted) {
+      await this.readEvents(signal);
+      if (signal.aborted) return;
+      this.setDaemonConnected(false);
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
   }
 
   close(): void {
@@ -57,6 +84,7 @@ export class EngineClient extends EventEmitter implements EngineLike {
     try {
       const res = await fetch(`${this.baseUrl}/api/events`, { signal });
       if (!res.ok || !res.body) return;
+      this.setDaemonConnected(true);
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
@@ -73,10 +101,8 @@ export class EngineClient extends EventEmitter implements EngineLike {
           split = buffer.indexOf('\n\n');
         }
       }
-    } catch (err) {
-      if (!signal.aborted) {
-        this.emit('error', err);
-      }
+    } catch {
+      // Daemon unreachable — eventLoop retries.
     }
   }
 
@@ -138,6 +164,8 @@ export class EngineClient extends EventEmitter implements EngineLike {
       const peers = (await res.json()) as PeerRow[];
       this.peersByHash.set(key, peers);
       this.emit('update');
+    } catch {
+      // Daemon unreachable — keep the last known peers.
     } finally {
       this.peersInflight.delete(key);
     }
@@ -166,6 +194,7 @@ export class EngineClient extends EventEmitter implements EngineLike {
 
   async restoreSession(): Promise<SessionRestoreResult> {
     const res = await postJson(this.baseUrl, '/api/restore-session', {});
+    if (!res.ok) return { restored: 0, failed: 0 };
     return (await res.json()) as SessionRestoreResult;
   }
 
@@ -181,12 +210,20 @@ export class EngineClient extends EventEmitter implements EngineLike {
     }
   }
 
-  pauseDownload(infoHash: string, _opts?: { byOffline?: boolean }): void {
-    void postJson(this.baseUrl, '/api/pause', { infoHash });
+  async pauseDownload(infoHash: string, _opts?: { byOffline?: boolean }): Promise<void> {
+    await this.postAndApplyState('/api/pause', { infoHash });
   }
 
-  resumeDownload(infoHash: string): void {
-    void postJson(this.baseUrl, '/api/resume', { infoHash });
+  async resumeDownload(infoHash: string): Promise<void> {
+    await this.postAndApplyState('/api/resume', { infoHash });
+  }
+
+  /** POST, then apply the daemon state in the response so callers see the result without waiting for SSE. */
+  private async postAndApplyState(path: string, body: unknown): Promise<void> {
+    const res = await postJson(this.baseUrl, path, body);
+    if (!res.ok) return;
+    const data = (await res.json()) as { state?: DaemonState };
+    if (data.state) this.applyState(data.state);
   }
 
   async removeTorrent(infoHash: string, destroyFiles: boolean): Promise<void> {

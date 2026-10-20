@@ -26,7 +26,8 @@ export function computeMainLayout(termRows: number, width: number): MainLayoutMe
   const footerReserve = termRows < 22 ? 3 : 4;
   const mainContentHeight = Math.max(6, termRows - headerReserve - footerReserve);
   const resultsVisible = Math.max(3, Math.floor(mainContentHeight * 0.45));
-  const transfersVisible = Math.max(2, Math.floor(mainContentHeight * 0.35));
+  // Each transfer is 3 lines plus a 1-line separator; the pane loses 3 lines to borders + title.
+  const transfersVisible = Math.max(2, Math.floor((mainContentHeight - 2) / 4));
   return { mainContentHeight, resultsVisible, transfersVisible, sparkW, searchColW, titleMax };
 }
 
@@ -49,7 +50,8 @@ export type FocusPane = 'search' | 'results' | 'transfers';
 export type AppView =
   | { kind: 'main' }
   | { kind: 'detail'; infoHash: string }
-  | { kind: 'config' };
+  | { kind: 'config' }
+  | { kind: 'daemon' };
 
 export function isTorrentUiPaused(s: { paused: boolean; dlPaused: boolean }): boolean {
   return s.paused || s.dlPaused;

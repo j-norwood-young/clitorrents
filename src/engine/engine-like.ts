@@ -13,6 +13,8 @@ export interface EngineLike extends EventEmitter {
   getConfig(): AppConfig;
   getBaseDownloadDir(): string;
   isNetworkOnline(): boolean;
+  /** Remote clients only: false while the daemon is unreachable. Emits 'daemon' on change. */
+  isDaemonConnected?(): boolean;
   getClientDownloadSpeed(): number;
   getClientUploadSpeed(): number;
   setBaseDownloadDir(dir: string): void;
@@ -24,8 +26,9 @@ export interface EngineLike extends EventEmitter {
   getPeers(infoHash: string): PeerRow[];
   hasActiveTorrent(infoHash: string): boolean;
   add(torrentId: string | Uint8Array, options?: AddTorrentOptions): Promise<void>;
-  pauseDownload(infoHash: string, opts?: { byOffline?: boolean }): void;
-  resumeDownload(infoHash: string): void;
+  /** Resolves once the pause/resume is reflected in getSnapshots(). */
+  pauseDownload(infoHash: string, opts?: { byOffline?: boolean }): void | Promise<void>;
+  resumeDownload(infoHash: string): void | Promise<void>;
   removeTorrent(infoHash: string, destroyFiles: boolean): Promise<void>;
   updateTorrentPolicy(
     infoHash: string,

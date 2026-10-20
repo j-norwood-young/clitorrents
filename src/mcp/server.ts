@@ -173,10 +173,10 @@ export async function runMcpServer(engine: EngineLike, config: AppConfig): Promi
           return textResult(snap);
         }
         case 'pause_torrent':
-          engine.pauseDownload(String(a.infoHash ?? ''));
+          await engine.pauseDownload(String(a.infoHash ?? ''));
           return textResult({ ok: true });
         case 'resume_torrent':
-          engine.resumeDownload(String(a.infoHash ?? ''));
+          await engine.resumeDownload(String(a.infoHash ?? ''));
           return textResult({ ok: true });
         case 'remove_torrent':
           await engine.removeTorrent(String(a.infoHash ?? ''), Boolean(a.destroyFiles));

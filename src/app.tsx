@@ -33,6 +33,14 @@ import {
   type ConfigField,
 } from './ui/config-editor.js';
 import { Modal } from './ui/modal.js';
+import { DaemonPanel, type DaemonAction } from './ui/daemon-panel.js';
+import {
+  getDaemonPanelStatus,
+  restartDaemon,
+  startDaemon,
+  stopDaemon,
+  type DaemonPanelStatus,
+} from './daemon/control.js';
 import {
   computeMainLayout,
   isTorrentUiPaused,
@@ -43,6 +51,9 @@ import {
 } from './ui/list-utils.js';
 import { getHotkeyHelp } from './ui/hotkey-help.js';
 import { isQuitKey } from './ui/keys.js';
+
+/** All active transfers at 0 peers for this long suggests a wedged daemon. */
+const STUCK_DAEMON_MS = 3 * 60_000;
 
 export function App({
   engine,
@@ -79,16 +90,42 @@ export function App({
   const [configPickerOpen, setConfigPickerOpen] = useState(false);
   const [configPickerIndex, setConfigPickerIndex] = useState(0);
 
+  const [daemonConnected, setDaemonConnected] = useState(engine.isDaemonConnected?.() ?? true);
+  const [daemonStatus, setDaemonStatus] = useState<DaemonPanelStatus | null>(null);
+  const [daemonBusy, setDaemonBusy] = useState<DaemonAction | null>(null);
+  const [daemonProgress, setDaemonProgress] = useState('');
+  const noPeersSinceRef = useRef<number | null>(null);
+
   useEffect(() => {
     const onUp = (): void => setTick((x) => x + 1);
     const onNet = (s: 'online' | 'offline'): void => setNetworkState(s);
+    const onDaemon = (s: 'connected' | 'disconnected'): void => {
+      setDaemonConnected(s === 'connected');
+      if (s === 'connected') {
+        setNetworkState(engine.isNetworkOnline() ? 'online' : 'offline');
+        setStatus('Connected to daemon');
+      }
+    };
     engine.on('update', onUp);
     engine.on('network', onNet);
+    engine.on('daemon', onDaemon);
     return () => {
       engine.off('update', onUp);
       engine.off('network', onNet);
+      engine.off('daemon', onDaemon);
     };
   }, [engine]);
+
+  const refreshDaemonStatus = useCallback(async () => {
+    setDaemonStatus(await getDaemonPanelStatus(config));
+  }, [config]);
+
+  useEffect(() => {
+    if (view.kind !== 'daemon') return;
+    void refreshDaemonStatus();
+    const id = setInterval(() => void refreshDaemonStatus(), 2000);
+    return () => clearInterval(id);
+  }, [view.kind, refreshDaemonStatus]);
 
   useEffect(() => {
     const pageCount = resultsPageCount(results.length, layout.resultsVisible);
@@ -254,8 +291,22 @@ export function App({
         return;
       }
 
+      if (key.ctrl && input === 'd') {
+        if (view.kind !== 'daemon') {
+          setDaemonStatus(null);
+          setDaemonProgress('');
+          setView({ kind: 'daemon' });
+        }
+        return;
+      }
+
       if (view.kind === 'config') {
         handleConfigInput(input, key);
+        return;
+      }
+
+      if (view.kind === 'daemon') {
+        handleDaemonInput(input, key);
         return;
       }
 
@@ -374,7 +425,7 @@ export function App({
           return;
         }
         if (input === 'p' && selectedSnap) {
-          togglePause(selectedSnap.infoHash);
+          void togglePause(selectedSnap.infoHash);
           return;
         }
         if (input === 'x' && selectedSnap) {
@@ -456,15 +507,23 @@ export function App({
     return code < 32 || code === 127;
   }
 
-  function togglePause(infoHash: string): void {
+  async function togglePause(infoHash: string): Promise<void> {
     const snap = engine.getSnapshots().find((s) => s.infoHash === infoHash);
     if (!snap) return;
     if (isTorrentUiPaused(snap)) {
-      engine.resumeDownload(infoHash);
+      await engine.resumeDownload(infoHash);
       const after = engine.getSnapshots().find((s) => s.infoHash === infoHash);
-      setStatus(after && !isTorrentUiPaused(after) ? 'Resumed' : 'Could not resume (offline or still loading)');
+      if (after && !isTorrentUiPaused(after)) {
+        setStatus('Resumed');
+      } else if (!daemonConnected) {
+        setStatus('Could not resume: daemon not running. Ctrl+D → s to start it');
+      } else if (!engine.isNetworkOnline()) {
+        setStatus('Network offline: will resume when the connection returns');
+      } else {
+        setStatus('Could not resume. If the daemon seems stuck, restart it: Ctrl+D → r');
+      }
     } else {
-      engine.pauseDownload(infoHash);
+      await engine.pauseDownload(infoHash);
       setStatus('Paused download');
     }
   }
@@ -478,6 +537,40 @@ export function App({
     setStatus(`maxRatio = ${next ?? 'inherit global'}`);
   }
 
+  function handleDaemonInput(input: string, key: { escape?: boolean }): void {
+    if (daemonBusy) return;
+    if (key.escape) {
+      setView({ kind: 'main' });
+      return;
+    }
+    const actions: Record<string, DaemonAction> = { s: 'start', x: 'stop', r: 'restart' };
+    const action = actions[input];
+    if (action) void runDaemonAction(action);
+  }
+
+  async function runDaemonAction(action: DaemonAction): Promise<void> {
+    setDaemonBusy(action);
+    setDaemonProgress('');
+    try {
+      const result =
+        action === 'start'
+          ? await startDaemon(config)
+          : action === 'stop'
+            ? await stopDaemon(config, setDaemonProgress)
+            : await restartDaemon(config, setDaemonProgress);
+      setDaemonProgress(result);
+      setStatus(result);
+      noPeersSinceRef.current = null;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setDaemonProgress(`Failed: ${msg}`);
+      setStatus(`Daemon ${action} failed: ${msg}`);
+    } finally {
+      setDaemonBusy(null);
+      void refreshDaemonStatus();
+    }
+  }
+
   function handleDetailInput(input: string, key: { escape?: boolean }): void {
     if (view.kind !== 'detail') return;
     const ih = view.infoHash;
@@ -485,7 +578,7 @@ export function App({
       setView({ kind: 'main' });
       return;
     }
-    if (input === 'p') togglePause(ih);
+    if (input === 'p') void togglePause(ih);
     if (input === 'o') {
       const snap = engine.getSnapshots().find((s) => s.infoHash === ih);
       if (snap?.downloadPath) openDownloadPath(snap.downloadPath);
@@ -695,6 +788,17 @@ export function App({
     : Math.min(mainContentHeight - 2, 16);
   const detailModalHeight = Math.min(mainContentHeight - 2, 10 + detailPeerLines);
 
+  const activeSnaps = snaps.filter((s) => !s.done && !isTorrentUiPaused(s));
+  const noPeers =
+    daemonConnected &&
+    networkState === 'online' &&
+    activeSnaps.length > 0 &&
+    activeSnaps.every((s) => s.numPeers === 0);
+  if (!noPeers) noPeersSinceRef.current = null;
+  else noPeersSinceRef.current ??= Date.now();
+  const daemonLooksStuck =
+    noPeersSinceRef.current != null && Date.now() - noPeersSinceRef.current > STUCK_DAEMON_MS;
+
   const hotkeyHelp = getHotkeyHelp({
         view,
         focus,
@@ -731,6 +835,16 @@ export function App({
       {networkState === 'offline' ? (
         <Text bold color="red">
           Offline — torrents paused, waiting for network…
+        </Text>
+      ) : null}
+
+      {!daemonConnected ? (
+        <Text bold color="red">
+          Daemon not running — reconnecting… Ctrl+D for daemon controls
+        </Text>
+      ) : daemonLooksStuck ? (
+        <Text bold color="yellow">
+          No peers on any transfer for 3+ min — daemon may be stuck. Ctrl+D → r to restart
         </Text>
       ) : null}
 
@@ -797,6 +911,19 @@ export function App({
               pickerIndex={configPickerIndex}
               baseDirLive={engine.getBaseDownloadDir()}
             />
+          </Modal>
+        ) : null}
+
+        {view.kind === 'daemon' ? (
+          <Modal
+            title="Daemon"
+            areaWidth={width}
+            areaHeight={mainContentHeight}
+            modalWidth={Math.min(width - 4, 72)}
+            modalHeight={Math.min(mainContentHeight - 2, 14)}
+            borderColor="cyan"
+          >
+            <DaemonPanel status={daemonStatus} busy={daemonBusy} progress={daemonProgress} />
           </Modal>
         ) : null}
 
