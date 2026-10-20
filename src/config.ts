@@ -124,7 +124,7 @@ export const SessionFileSchema = z.object({
 
 export type SessionFile = z.infer<typeof SessionFileSchema>;
 
-function defaultConfig(): AppConfig {
+export function defaultConfig(): AppConfig {
   return {
     downloadDir: null,
     categories: { enabled: false },

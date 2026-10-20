@@ -1,3 +1,8 @@
+import { createRequire } from 'node:module';
+
+/** Package version, read from package.json so it never drifts. */
+export const VERSION: string = (createRequire(import.meta.url)('../package.json') as { version: string }).version;
+
 /** Seed ratio presets for per-torrent and global defaults */
 export const RATIO_PRESETS: (number | null)[] = [null, 0.5, 1, 1.5, 2, 5];
 

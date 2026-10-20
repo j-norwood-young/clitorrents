@@ -134,7 +134,12 @@ export class TorrentEngine extends EventEmitter {
 
   constructor(
     config: AppConfig,
-    opts?: { connectivity?: ConnectivityMonitor; persistSession?: boolean }
+    opts?: {
+      connectivity?: ConnectivityMonitor;
+      persistSession?: boolean;
+      /** Extra WebTorrent constructor options (tests disable DHT/LSD). */
+      clientOptions?: Record<string, unknown>;
+    }
   ) {
     super();
     this.persistSessionEnabled = opts?.persistSession !== false;
@@ -146,6 +151,7 @@ export class TorrentEngine extends EventEmitter {
     }
     fs.mkdirSync(this.baseDownloadDir, { recursive: true });
     this.client = new WebTorrent({
+      ...opts?.clientOptions,
       downloadLimit: normLimit(config.globalDownloadLimitBps),
       uploadLimit: normLimit(config.globalUploadLimitBps),
     });
@@ -456,7 +462,7 @@ export class TorrentEngine extends EventEmitter {
     if (this.config.onReachLimit === 'remove_keep_files') {
       this.meta.delete(t.infoHash);
       this.removeSessionEntry(t.infoHash);
-      await this.client.remove(t, { destroyStore: false });
+      await this.removeFromClient(t, false);
     } else {
       const n = t.pieces.length;
       if (n > 0) t.deselect(0, n - 1);
@@ -466,6 +472,15 @@ export class TorrentEngine extends EventEmitter {
       this.setSessionDlPaused(t.infoHash, true);
     }
     this.emit('update');
+  }
+
+  /** client.remove() resolves before the torrent is destroyed; wait for its callback instead. */
+  private removeFromClient(t: Torrent, destroyStore: boolean): Promise<void> {
+    return new Promise((resolve, reject) => {
+      this.client
+        .remove(t, { destroyStore }, (err) => (err ? reject(err) : resolve()))
+        .catch(reject);
+    });
   }
 
   getSnapshots(): TorrentSnapshot[] {
@@ -651,7 +666,7 @@ export class TorrentEngine extends EventEmitter {
     if (!t) return;
     this.meta.delete(key);
     this.removeSessionEntry(key);
-    await this.client.remove(t, { destroyStore: destroyFiles });
+    await this.removeFromClient(t, destroyFiles);
     this.emit('update');
   }
 
@@ -705,13 +720,14 @@ export class TorrentEngine extends EventEmitter {
 
         report(`Stopping ${label} (${step})…`, 'torrent');
         this.meta.delete(t.infoHash);
-        await this.client.remove(t, { destroyStore: false });
+        await this.removeFromClient(t, false);
         await yieldToUi();
       }
     }
 
     report('Closing torrent client…', 'client');
-    await this.client.destroy();
+    // destroy() is callback-only; wait for it so sockets are closed before we report done.
+    await new Promise<void>((resolve) => this.client.destroy(() => resolve()));
     this.meta.clear();
     await yieldToUi();
 

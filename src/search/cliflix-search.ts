@@ -7,7 +7,18 @@ const torrentSearch = require('torrent-search-api') as {
   enableProvider(name: string): void;
   search(query: string, category: string, limit: number): Promise<TorrentApiResult[]>;
   getMagnet(torrent: TorrentApiResult): Promise<string | undefined>;
+  loadProvider(provider: object): void;
+  removeProvider(name: string): void;
 };
+
+/** Load a custom torrent-search-api provider (e.g. the local mock server). */
+export function registerSearchProvider(provider: object): void {
+  torrentSearch.loadProvider(provider);
+}
+
+export function removeSearchProvider(name: string): void {
+  torrentSearch.removeProvider(name);
+}
 
 /** Raw result from torrent-search-api (shape varies by provider) */
 export type TorrentApiResult = Record<string, unknown> & {

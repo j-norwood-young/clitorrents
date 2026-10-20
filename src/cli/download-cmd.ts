@@ -1,6 +1,6 @@
 import type { AppConfig } from '../config.js';
 import { getMagnetForTorrent, searchCliflixStyle } from '../search/cliflix-search.js';
-import { resolveTorrentId } from '../search/resolve-torrent-id.js';
+import { isDirectTorrentTarget, resolveTorrentId } from '../search/resolve-torrent-id.js';
 import type { EngineLike } from '../engine/engine-like.js';
 import { formatCategoryLabel, planDownloadLocation } from '../media/classify.js';
 import { formatBytes, formatEta, formatSpeed } from '../utils/format.js';
@@ -18,7 +18,9 @@ export type DownloadCommandOpts = {
 export async function runDownloadCommand(
   engine: EngineLike,
   config: AppConfig,
-  opts: DownloadCommandOpts
+  opts: DownloadCommandOpts,
+  /** Progress line output (injectable for tests). */
+  out: Pick<NodeJS.WriteStream, 'write'> = process.stdout
 ): Promise<number> {
   if (opts.downloadLimit !== undefined || opts.uploadLimit !== undefined) {
     engine.setGlobalLimits(
@@ -34,13 +36,7 @@ export async function runDownloadCommand(
   let displayName: string;
 
   const target = opts.target.trim();
-  const isDirect =
-    target.startsWith('magnet:') ||
-    /^[a-f0-9]{40}$/i.test(target) ||
-    /^[a-z2-7]{32}$/i.test(target) ||
-    /^https?:\/\//i.test(target);
-
-  if (isDirect) {
+  if (isDirectTorrentTarget(target)) {
     displayName = target.slice(0, 60);
     magnetOrId = await resolveTorrentId(target);
   } else {
@@ -90,7 +86,7 @@ export async function runDownloadCommand(
       const s = snaps[snaps.length - 1];
       if (!s) return;
       const pct = (s.progress * 100).toFixed(1);
-      process.stdout.write(
+      out.write(
         `\r${pct}% DL ${formatSpeed(s.downloadSpeed)} UL ${formatSpeed(s.uploadSpeed)} ETA ${formatEta(s.timeRemaining)} peers ${s.numPeers}   `
       );
       if (s.done) {

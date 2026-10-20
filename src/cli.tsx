@@ -10,7 +10,12 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  const config = ensureConfigExists();
+  let config = ensureConfigExists();
+  if (process.env.CLITORRENTS_MOCK_SERVER) {
+    const { applyMockServerEnv } = await import('./search/mock-provider.js');
+    const { registerSearchProvider } = await import('./search/cliflix-search.js');
+    config = applyMockServerEnv(config, registerSearchProvider);
+  }
 
   if (parsed.command === 'search') {
     const { runSearchCommand } = await import('./cli/search-cmd.js');

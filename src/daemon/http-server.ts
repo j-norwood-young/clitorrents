@@ -1,4 +1,5 @@
 import http, { type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import { VERSION } from '../constants.js';
 import type { AppConfig } from '../config.js';
 import { getDaemonBaseUrl } from '../config.js';
 import type { TorrentEngine } from '../engine/torrent-engine.js';
@@ -96,7 +97,7 @@ export function createDaemonServer(
 
     try {
       if (method === 'GET' && path === '/api/health') {
-        json(res, 200, { ok: true, version: '0.4.1' });
+        json(res, 200, { ok: true, version: VERSION });
         return;
       }
 
@@ -104,7 +105,7 @@ export function createDaemonServer(
         const pidFile = readDaemonPid();
         json(res, 200, {
           running: true,
-          version: '0.4.1',
+          version: VERSION,
           pid: process.pid,
           startedAt: new Date(startedAt).toISOString(),
           uptimeMs: Date.now() - startedAt,

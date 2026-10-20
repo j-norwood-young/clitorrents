@@ -2,22 +2,32 @@ import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
+type OpenDeps = {
+  platform: NodeJS.Platform;
+  run: (cmd: string, args: string[]) => void;
+};
+
+const defaultDeps: OpenDeps = {
+  platform: process.platform,
+  run: (cmd, args) => execFile(cmd, args, () => {}),
+};
+
 /** Open file manager at folder, or reveal file (macOS). */
-export function openDownloadPath(fileOrDir: string): void {
+export function openDownloadPath(fileOrDir: string, deps: OpenDeps = defaultDeps): void {
   const resolved = path.resolve(fileOrDir);
   if (!fs.existsSync(resolved)) return;
   const stat = fs.statSync(resolved);
   const isDir = stat.isDirectory();
-  if (process.platform === 'darwin') {
+  if (deps.platform === 'darwin') {
     if (isDir) {
-      execFile('open', [resolved], () => {});
+      deps.run('open', [resolved]);
     } else {
-      execFile('open', ['-R', resolved], () => {});
+      deps.run('open', ['-R', resolved]);
     }
-  } else if (process.platform === 'win32') {
-    execFile('explorer.exe', [isDir ? resolved : path.dirname(resolved)], () => {});
+  } else if (deps.platform === 'win32') {
+    deps.run('explorer.exe', [isDir ? resolved : path.dirname(resolved)]);
   } else {
     const dir = isDir ? resolved : path.dirname(resolved);
-    execFile('xdg-open', [dir], () => {});
+    deps.run('xdg-open', [dir]);
   }
 }

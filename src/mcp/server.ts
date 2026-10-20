@@ -1,18 +1,25 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import { VERSION } from '../constants.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import type { AppConfig } from '../config.js';
-import { saveConfig } from '../config.js';
 import type { EngineLike } from '../engine/engine-like.js';
 import { getMagnetForTorrent, searchCliflixStyle } from '../search/cliflix-search.js';
-import { resolveTorrentId } from '../search/resolve-torrent-id.js';
+import { isDirectTorrentTarget, resolveTorrentId } from '../search/resolve-torrent-id.js';
 
 export async function runMcpServer(engine: EngineLike, config: AppConfig): Promise<void> {
+  const server = createMcpServer(engine, config);
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+}
+
+/** Tool handlers without a transport, so tests can connect an in-memory client. */
+export function createMcpServer(engine: EngineLike, config: AppConfig): Server {
   const server = new Server(
-    { name: 'clitorrents', version: '0.4.1' },
+    { name: 'clitorrents', version: VERSION },
     { capabilities: { tools: {} } }
   );
 
@@ -136,11 +143,7 @@ export async function runMcpServer(engine: EngineLike, config: AppConfig): Promi
           const target = String(a.target ?? '');
           let magnet: string | Uint8Array;
           let torrentName = a.name ? String(a.name) : target;
-          const isDirect =
-            target.startsWith('magnet:') ||
-            /^[a-f0-9]{40}$/i.test(target) ||
-            /^https?:\/\//i.test(target);
-          if (isDirect) {
+          if (isDirectTorrentTarget(target)) {
             magnet = await resolveTorrentId(target);
           } else {
             const pick = Math.max(1, Number(a.pick ?? 1)) - 1;
@@ -181,11 +184,12 @@ export async function runMcpServer(engine: EngineLike, config: AppConfig): Promi
         case 'remove_torrent':
           await engine.removeTorrent(String(a.infoHash ?? ''), Boolean(a.destroyFiles));
           return textResult({ ok: true });
-        case 'set_limits':
+        case 'set_limits': {
+          const current = engine.getConfig();
           if (a.downloadBps !== undefined || a.uploadBps !== undefined) {
             engine.setGlobalLimits(
-              a.downloadBps !== undefined ? Number(a.downloadBps) : config.globalDownloadLimitBps,
-              a.uploadBps !== undefined ? Number(a.uploadBps) : config.globalUploadLimitBps,
+              a.downloadBps !== undefined ? Number(a.downloadBps) : current.globalDownloadLimitBps,
+              a.uploadBps !== undefined ? Number(a.uploadBps) : current.globalUploadLimitBps,
               Boolean(a.persist)
             );
           }
@@ -196,12 +200,12 @@ export async function runMcpServer(engine: EngineLike, config: AppConfig): Promi
             );
           }
           return textResult(engine.getConfig());
+        }
         case 'get_config':
           return textResult(engine.getConfig());
         case 'set_config': {
-          const next = { ...config, ...(a.config as AppConfig) };
+          const next = { ...engine.getConfig(), ...(a.config as AppConfig) };
           engine.setConfig(next, { persist: Boolean(a.persist) });
-          if (Boolean(a.persist)) saveConfig(next);
           return textResult(next);
         }
         default:
@@ -213,8 +217,7 @@ export async function runMcpServer(engine: EngineLike, config: AppConfig): Promi
     }
   });
 
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
+  return server;
 }
 
 function textResult(data: unknown) {

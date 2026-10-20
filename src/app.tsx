@@ -59,9 +59,12 @@ const STUCK_DAEMON_MS = 3 * 60_000;
 export function App({
   engine,
   initialConfig,
+  splashMs,
 }: {
   engine: EngineLike;
   initialConfig: AppConfig;
+  /** Minimum splash duration (tests pass 0). */
+  splashMs?: number;
 }): React.ReactNode {
   const { exit } = useApp();
   const { columns: width = 80, rows: termRows = 24 } = useWindowSize();
@@ -807,7 +810,7 @@ export function App({
   }
 
   if (showSplash) {
-    return <Splash onDone={() => setShowSplash(false)} />;
+    return <Splash minMs={splashMs} onDone={() => setShowSplash(false)} />;
   }
 
   const sparkW = layout.sparkW;

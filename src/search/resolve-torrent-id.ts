@@ -1,4 +1,16 @@
 import parseTorrent, { toMagnetURI } from 'parse-torrent';
+import { VERSION } from '../constants.js';
+
+/** True for magnets, hex/base32 info hashes and http(s) .torrent URLs (anything that isn't a search query). */
+export function isDirectTorrentTarget(target: string): boolean {
+  const s = target.trim();
+  return (
+    s.startsWith('magnet:') ||
+    /^[a-f0-9]{40}$/i.test(s) ||
+    /^[a-z2-7]{32}$/i.test(s) ||
+    /^https?:\/\//i.test(s)
+  );
+}
 
 /** Resolve magnet URI, info hash, or .torrent URL into something WebTorrent can add. */
 export async function resolveTorrentId(linkOrMagnet: string): Promise<string | Uint8Array> {
@@ -12,7 +24,7 @@ export async function resolveTorrentId(linkOrMagnet: string): Promise<string | U
   const res = await fetch(s, {
     redirect: 'follow',
     headers: {
-      'User-Agent': 'clitorrents/0.1',
+      'User-Agent': `clitorrents/${VERSION}`,
       Accept: 'application/x-bittorrent, */*',
     },
   });

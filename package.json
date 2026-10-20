@@ -27,7 +27,7 @@
     "mcp"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc -p tsconfig.build.json",
     "prepack": "npm run build",
     "start": "node dist/cli.js",
     "dev": "tsx src/cli.tsx",
@@ -39,7 +39,11 @@
     "download": "node dist/cli.js download",
     "help": "node dist/cli.js help",
     "docs": "serve docs -l 8765",
-    "test": "tsx --test 'src/**/*.test.ts' 'src/**/*.test.tsx'"
+    "test": "tsx --test 'src/**/*.test.ts' 'src/**/*.test.tsx'",
+    "test:e2e": "npm run build && tsx --test 'src/**/*.e2e.ts'",
+    "test:coverage": "tsx --test --experimental-test-coverage --test-coverage-exclude='src/test/**' --test-coverage-exclude='src/**/*.test.*' --test-coverage-exclude='src/**/*.e2e.ts' 'src/**/*.test.ts' 'src/**/*.test.tsx'",
+    "typecheck": "tsc",
+    "mock-server": "tsx scripts/mock-torrent-server.ts"
   },
   "engines": {
     "node": ">=20"

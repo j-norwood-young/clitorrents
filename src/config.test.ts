@@ -1,6 +1,21 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import fs from 'node:fs';
 import {
+  defaultConfig,
+  ensureConfigExists,
+  getConfigPath,
+  getSearchHistoryPath,
+  getSessionPath,
+  getTorrentOverridesPath,
+  loadConfig,
+  loadSearchHistory,
+  loadSession,
+  loadTorrentOverrides,
+  saveSearchHistory,
+  saveTorrentOverrides,
+  updateDefaultRatio,
+  updateGlobalLimits,
   getDaemonBaseUrl,
   getMergedTorrentPolicy,
   resolveBaseDir,
@@ -143,5 +158,104 @@ describe('torrent policy overrides', () => {
     const cfg = { ...sampleConfig(), defaultMaxRatio: 1.5 };
     const policy = getMergedTorrentPolicy('deadbeef', cfg, { byInfoHash: {} });
     assert.equal(policy.maxRatio, 1.5);
+  });
+});
+
+describe('config loading edge cases', () => {
+  it('ensureConfigExists writes defaults on first run, then loads from disk', async () => {
+    await withTempConfigDir(() => {
+      assert.equal(fs.existsSync(getConfigPath()), false);
+      assert.deepEqual(ensureConfigExists(), defaultConfig());
+      assert.equal(fs.existsSync(getConfigPath()), true);
+      fs.writeFileSync(getConfigPath(), JSON.stringify({ globalDownloadLimitBps: 7 }));
+      assert.equal(ensureConfigExists().globalDownloadLimitBps, 7);
+    });
+  });
+
+  it('merges partial config with defaults (nested providers and categories)', async () => {
+    await withTempConfigDir(() => {
+      fs.mkdirSync(getConfigPath().replace(/config\.json$/, ''), { recursive: true });
+      fs.writeFileSync(
+        getConfigPath(),
+        JSON.stringify({
+          torrents: { providers: { active: 'Yts' }, categoryByProvider: { Yts: 'Movies' } },
+          categories: { enabled: true },
+          jackett: { url: 'legacy' },
+        })
+      );
+      const cfg = loadConfig();
+      assert.equal(cfg.torrents.providers.active, 'Yts');
+      assert.ok(cfg.torrents.providers.available.length > 1);
+      assert.equal(cfg.torrents.categoryByProvider?.Yts, 'Movies');
+      assert.equal(cfg.torrents.categoryByProvider?.ThePirateBay, 'Video');
+      assert.equal(cfg.categories?.enabled, true);
+      assert.equal(cfg.globalUploadLimitBps, -1);
+      assert.equal('jackett' in cfg, false);
+    });
+  });
+
+  it('falls back to defaults for corrupt or invalid files', async () => {
+    await withTempConfigDir(() => {
+      fs.mkdirSync(getConfigPath().replace(/config\.json$/, ''), { recursive: true });
+      fs.writeFileSync(getConfigPath(), '{not json');
+      assert.deepEqual(loadConfig(), defaultConfig());
+      fs.writeFileSync(getConfigPath(), JSON.stringify({ globalDownloadLimitBps: 'fast' }));
+      assert.deepEqual(loadConfig(), defaultConfig());
+
+      fs.writeFileSync(getSessionPath(), '{"torrents": "nope"}');
+      assert.deepEqual(loadSession(), { torrents: [] });
+      fs.writeFileSync(getTorrentOverridesPath(), 'garbage');
+      assert.deepEqual(loadTorrentOverrides(), { byInfoHash: {} });
+      fs.writeFileSync(getSearchHistoryPath(), '[1, 2]');
+      assert.deepEqual(loadSearchHistory(), []);
+    });
+  });
+});
+
+describe('search history and overrides persistence', () => {
+  it('round-trips search history', async () => {
+    await withTempConfigDir(() => {
+      assert.deepEqual(loadSearchHistory(), []);
+      saveSearchHistory(['newest', 'older']);
+      assert.deepEqual(loadSearchHistory(), ['newest', 'older']);
+    });
+  });
+
+  it('round-trips torrent overrides', async () => {
+    await withTempConfigDir(() => {
+      const data = setTorrentOverride('ABC', { maxRatio: 2, maxUploadBytes: null }, { byInfoHash: {} });
+      saveTorrentOverrides(data);
+      assert.deepEqual(loadTorrentOverrides(), { byInfoHash: { abc: { maxRatio: 2, maxUploadBytes: null } } });
+    });
+  });
+});
+
+describe('policy and limit helpers', () => {
+  it('per-torrent null override disables an inherited limit', () => {
+    const cfg = { ...sampleConfig(), defaultMaxRatio: 2, defaultMaxUploadBytes: 1000 };
+    const overrides = setTorrentOverride('AA', { maxRatio: null }, { byInfoHash: {} });
+    assert.deepEqual(getMergedTorrentPolicy('aa', cfg, overrides), { maxRatio: null, maxUploadBytes: 1000 });
+  });
+
+  it('setTorrentOverride merges patches; an explicit undefined clears that key', () => {
+    let o = setTorrentOverride('aa', { maxRatio: 1 }, { byInfoHash: {} });
+    o = setTorrentOverride('aa', { maxUploadBytes: 50 }, o);
+    assert.deepEqual(o.byInfoHash.aa, { maxRatio: 1, maxUploadBytes: 50 });
+    o = setTorrentOverride('aa', { maxRatio: undefined }, o);
+    assert.deepEqual(o.byInfoHash.aa, { maxUploadBytes: 50 });
+  });
+
+  it('updateGlobalLimits and updateDefaultRatio return new configs', () => {
+    const cfg = sampleConfig();
+    const next = updateGlobalLimits(cfg, { globalUploadLimitBps: 10 });
+    assert.equal(next.globalUploadLimitBps, 10);
+    assert.equal(next.globalDownloadLimitBps, -1);
+    assert.notEqual(next, cfg);
+    assert.equal(updateDefaultRatio(cfg, 3).defaultMaxRatio, 3);
+    assert.equal(cfg.defaultMaxRatio, null);
+  });
+
+  it('getDaemonBaseUrl falls back to defaults', () => {
+    assert.equal(getDaemonBaseUrl(sampleConfig()), 'http://127.0.0.1:17359');
   });
 });

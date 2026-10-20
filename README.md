@@ -281,10 +281,33 @@ When the network is unavailable, clitorrents detects offline status, pauses torr
 ## Tests
 
 ```bash
-npm test
+npm test            # unit + integration tests (offline, CI-safe)
+npm run test:e2e    # builds, then drives dist/cli.js: daemon start/status/download/stop
+npm run test:coverage
+npm run typecheck   # type-checks tests and scripts too (the build excludes them)
 ```
 
-Runs unit tests for config, media classification, connectivity monitoring, CLI parsing, and UI components — all offline, suitable for CI.
+Everything runs against a **local mock torrent swarm** (`src/test/mock-torrent-server.ts`): an HTTP tracker, a WebTorrent seeder with deterministic content, and a small search API, all on `127.0.0.1`. Test engines run with DHT/LSD/PEX off, so nothing touches the internet. Downloads are verified by SHA-1.
+
+What's covered:
+
+- **Engine:** real downloads, magnet and `.torrent` adds, pause/resume, remove (with and without deleting files), session restore, category routing, ratio/upload limits, auto-pause when offline, and shutdown.
+- **Daemon:** every HTTP route, SSE streaming, and `EngineClient` (including reconnecting after a daemon restart).
+- **MCP:** every tool, through an in-memory MCP client.
+- **CLI:** the `search`, `download`, `status` and `stop` commands, plus the daemon pid lock and start/stop control.
+- **TUI:** Ink components and the full `App` (search, add, transfers, settings, daemon panel, quit), using `ink-testing-library`.
+
+### Mock torrent server
+
+Run the same swarm by hand to try the real TUI or CLI without public trackers:
+
+```bash
+npm run mock-server                                     # prints magnets + URL
+CLITORRENTS_MOCK_SERVER=http://127.0.0.1:8787 npm run dev     # search "mock" in the TUI
+CLITORRENTS_MOCK_SERVER=http://127.0.0.1:8787 npm run search -- mock
+```
+
+When `CLITORRENTS_MOCK_SERVER` is set, a `MockServer` search provider is registered and becomes the only provider for that process. Your config file is not changed.
 
 ## Development reference
 

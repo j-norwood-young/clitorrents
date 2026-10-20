@@ -33,8 +33,13 @@ declare module 'webtorrent' {
     downloadSpeed: number;
     uploadSpeed: number;
     add(torrentId: unknown, opts?: Record<string, unknown>): Torrent;
-    remove(torrent: Torrent, opts?: Record<string, unknown>): Promise<void>;
-    destroy(): Promise<void>;
+    remove(
+      torrent: Torrent,
+      opts?: Record<string, unknown>,
+      cb?: (err?: Error | null) => void
+    ): Promise<void>;
+    /** Callback-only: returns nothing to await. Throws if already destroyed. */
+    destroy(cb?: (err?: Error | null) => void): void;
     throttleDownload(rate: number): void;
     throttleUpload(rate: number): void;
   }
