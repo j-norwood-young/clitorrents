@@ -6,6 +6,9 @@ import { acquireDaemonLock, releaseDaemonLock } from '../daemon/instance.js';
 export async function runDaemonCommand(config: AppConfig): Promise<void> {
   acquireDaemonLock();
   const engine = new TorrentEngine(config);
+  engine.on('client-error', (err: Error) => {
+    console.error(`torrent client error: ${err.message}`);
+  });
 
   const finish = (): void => {
     releaseDaemonLock();

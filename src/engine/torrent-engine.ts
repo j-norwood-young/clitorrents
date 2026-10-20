@@ -155,6 +155,11 @@ export class TorrentEngine extends EventEmitter {
       downloadLimit: normLimit(config.globalDownloadLimitBps),
       uploadLimit: normLimit(config.globalUploadLimitBps),
     });
+    // Client-level errors (e.g. the torrent port failing to bind) would otherwise be
+    // unhandled 'error' events and crash the process; surface them instead.
+    this.client.on('error', (err: unknown) => {
+      this.emit('client-error', err instanceof Error ? err : new Error(String(err)));
+    });
     this.applyGlobalThrottle();
     this.connectivity = opts?.connectivity ?? new ConnectivityMonitor();
     this.connectivity.on('offline', () => this.handleOffline());

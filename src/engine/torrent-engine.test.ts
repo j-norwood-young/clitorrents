@@ -297,4 +297,14 @@ describe('TorrentEngine (mock swarm)', () => {
     await fx.engine.shutdown((p) => progress.push(p));
     assert.ok(progress.some((p) => p.message === 'No active transfers'));
   });
+
+  it('surfaces WebTorrent client errors as client-error instead of crashing', () => {
+    fx = createEngineFixture();
+    const seen: Error[] = [];
+    fx.engine.on('client-error', (err: Error) => seen.push(err));
+    const client = (fx.engine as unknown as { client: { emit(ev: string, err: Error): void } }).client;
+    assert.doesNotThrow(() => client.emit('error', new Error('bind EADDRINUSE')));
+    assert.equal(seen.length, 1);
+    assert.equal(seen[0]!.message, 'bind EADDRINUSE');
+  });
 });
