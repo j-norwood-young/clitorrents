@@ -45,8 +45,8 @@ export function getHotkeyHelp(ctx: HotkeyHelpContext): string {
   switch (focus) {
     case 'search':
       return compact
-        ? 'Enter search · Tab · Ctrl+O · Ctrl+Q'
-        : `Type query · Enter search · ${GLOBAL} · ${LIMITS}`;
+        ? 'Enter search · ↑↓ history · Esc clear · Tab · Ctrl+Q'
+        : `Type query · Enter search · ↑↓ history · Esc clear · ${GLOBAL}`;
     case 'results':
       return compact
         ? '↑↓ · ←→ page · Enter add · Tab · Ctrl+O · Ctrl+Q'

@@ -72,11 +72,18 @@ npm run build
 npm start
 ```
 
+Or run straight from source with `tsx` (no build step):
+
+```bash
+npm run dev
+```
+
 npm scripts (after `npm run build`):
 
 | Script | Same as |
 |--------|---------|
 | `npm start` | TUI |
+| `npm run dev` | TUI from source via `tsx` (no build needed) |
 | `npm run daemon` | `clitorrents daemon` |
 | `npm run stop` | `clitorrents stop` |
 | `npm run status` | `clitorrents status` |
@@ -88,7 +95,7 @@ npm scripts (after `npm run build`):
 
 A single **background daemon** owns the WebTorrent client. The TUI, MCP server, and `download` command connect to it over HTTP on `127.0.0.1:17359` (configurable via `daemon.host` / `daemon.port` in `config.json`). Live updates use **Server-Sent Events** (`/api/events`).
 
-Starting the TUI or MCP auto-spawns the daemon if it is not already running. Ctrl+Q closes the TUI only — downloads continue in the daemon. Stop everything with:
+Starting the TUI or MCP auto-spawns the daemon if it is not already running. Ctrl+Q closes the TUI only — downloads continue in the daemon. Press **Ctrl+D** in the TUI to open the daemon panel, which shows its status and lets you start (`s`), stop (`x`), or restart (`r`) it. Stop everything from the shell with:
 
 ```bash
 clitorrents stop
@@ -126,6 +133,8 @@ Per-torrent overrides (ratio caps from the detail view, etc.) are stored in:
 `~/.config/clitorrents/torrent-overrides.json`
 
 Active transfers are persisted to `session.json` in the same directory whenever you add, pause, resume, or remove a torrent. The daemon restores them on startup. Quitting the TUI with Ctrl+Q leaves downloads running; use `clitorrents stop` to shut down the daemon. Only explicit remove (`x` / `X`) drops a torrent from the session.
+
+Search history (newest first, up to 100 queries) is saved to `search-history.json` in the same directory.
 
 You can also edit settings in the TUI with Ctrl+O.
 
@@ -177,9 +186,9 @@ Use `categories.unknown` for a catch-all inbox (software, games, etc.) without m
 
 | Key | Action |
 |-----|--------|
-| Tab | Cycle focus: Search → Results → Transfers |
+| Tab / Shift+Tab | Cycle focus forward / back: Search → Results → Transfers |
 | Enter | Search (search focus) / add result (results) / open detail (transfers) |
-| ↑↓ | Navigate results or transfers (when that pane is focused) |
+| ↑↓ | Navigate results or transfers; in search, step through previous queries |
 | ← → | Previous / next results page (results focus) |
 | p | Toggle pause / resume download |
 | o | Open download folder (or reveal file on macOS) |
@@ -190,7 +199,8 @@ Use `categories.unknown` for a catch-all inbox (software, games, etc.) without m
 | < > | Cycle global upload limit down/up |
 | { } | Cycle default max ratio down/up |
 | Ctrl+O | Open settings editor (saved to config.json) |
-| Esc | Back from detail or settings |
+| Ctrl+D | Open daemon panel (`s` start · `x` stop · `r` restart) |
+| Esc | Clear the search box (search focus) / back from detail, settings, or daemon panel |
 | Ctrl+Q | Quit |
 
 Search is always editable — type anytime without switching modes.
@@ -256,9 +266,11 @@ Use `clitorrents status` (or `npm run status`) to confirm the daemon PID, transf
 
 1. Review `config.json` provider settings.
 2. Search for `sintel` and add a result.
-3. Confirm progress, ETA, peer list, sparkline, and save path update.
+3. Confirm progress, ETA, ratio, peer list, sparkline, and save path update.
 4. Press `o` to open the download directory.
 5. Press Ctrl+O to verify settings editor saves.
+6. Press Ctrl+D and restart the daemon; transfers should reconnect.
+7. In search, press ↑ to recall the previous query.
 
 ## WebTorrent behavior
 

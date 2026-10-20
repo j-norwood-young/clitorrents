@@ -30,6 +30,7 @@
     "build": "tsc",
     "prepack": "npm run build",
     "start": "node dist/cli.js",
+    "dev": "tsx src/cli.tsx",
     "daemon": "node dist/cli.js daemon",
     "stop": "node dist/cli.js stop",
     "status": "node dist/cli.js status",

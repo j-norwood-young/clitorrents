@@ -1,7 +1,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import type { TorrentSnapshot } from '../engine/torrent-engine.js';
-import { formatEta, formatSpeed, formatTransferProgress } from '../utils/format.js';
+import { formatEta, formatRatio, formatSpeed, formatTransferProgress } from '../utils/format.js';
 import { Sparkline } from './sparkline.js';
 import {
   formatTransferStatusBadge,
@@ -67,6 +67,9 @@ export function TransfersList({
               : paused
                 ? 'Paused'
                 : `${formatSpeed(s.downloadSpeed)} ETA ${formatEta(s.timeRemaining)}`;
+          const ratioLabel =
+            `ratio ${formatRatio(s.ratio ?? 0)}` +
+            (s.maxRatio != null ? `/${s.maxRatio}` : '');
           return (
             <React.Fragment key={s.infoHash}>
             {j > 0 ? (
@@ -106,10 +109,10 @@ export function TransfersList({
               <Text dimColor={dimmed} color={paused ? 'yellow' : undefined}>
                 {'  '}
                 {paused ? (
-                  <>Paused · peers {s.numPeers}</>
+                  <>Paused · peers {s.numPeers} · {ratioLabel}</>
                 ) : (
                   <>
-                    <Sparkline values={s.history} width={sparkW} /> peers {s.numPeers} · {statsLine}
+                    <Sparkline values={s.history} width={sparkW} /> peers {s.numPeers} · {ratioLabel} · {statsLine}
                   </>
                 )}
               </Text>

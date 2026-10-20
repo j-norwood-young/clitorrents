@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Box, Text, useInput, usePaste, useApp, useWindowSize } from 'ink';
 import type { EngineLike } from './engine/engine-like.js';
-import type { AppConfig } from './config.js';
+import { loadSearchHistory, saveSearchHistory, type AppConfig } from './config.js';
 import {
   getMagnetForTorrent,
   searchCliflixStyle,
@@ -19,6 +19,7 @@ import {
   SPEED_LIMIT_PRESETS,
 } from './constants.js';
 import { SearchField } from './ui/text-input.js';
+import { pushSearchHistory, stepSearchHistory } from './ui/search-history.js';
 import { ResultsList } from './ui/results-list.js';
 import { TransfersList } from './ui/transfers-list.js';
 import { DetailPane } from './ui/detail-pane.js';
@@ -74,6 +75,10 @@ export function App({
   const [focus, setFocus] = useState<FocusPane>('search');
   const [query, setQuery] = useState('');
   const [cursor, setCursor] = useState(0);
+  const [searchHistory, setSearchHistory] = useState<string[]>(() => loadSearchHistory());
+  /** -1 = editing the draft; otherwise index into searchHistory */
+  const [historyIndex, setHistoryIndex] = useState(-1);
+  const historyDraftRef = useRef('');
   const [results, setResults] = useState<CliflixSearchRow[]>([]);
   const [resultsPage, setResultsPage] = useState(0);
   const [ri, setRi] = useState(0);
@@ -167,6 +172,14 @@ export function App({
     }
     setBusy('search');
     setStatus('Searching…');
+    const nextHistory = pushSearchHistory(searchHistory, query);
+    setSearchHistory(nextHistory);
+    setHistoryIndex(-1);
+    try {
+      saveSearchHistory(nextHistory);
+    } catch {
+      // History is a convenience; never block a search on it
+    }
     try {
       const { rows, info } = await searchCliflixStyle(query, {
         limit: config.torrents.limit,
@@ -187,7 +200,7 @@ export function App({
     } finally {
       setBusy('idle');
     }
-  }, [query, config]);
+  }, [query, config, searchHistory]);
 
   const quitApp = useCallback(() => {
     if (quittingRef.current) return;
@@ -266,6 +279,7 @@ export function App({
         return before + chunk + after;
       });
       setCursor((c) => c + chunk.length);
+      setHistoryIndex(-1);
     },
     { isActive: searchInputActive }
   );
@@ -468,12 +482,41 @@ export function App({
       delete?: boolean;
       leftArrow?: boolean;
       rightArrow?: boolean;
+      upArrow?: boolean;
+      downArrow?: boolean;
+      escape?: boolean;
       meta?: boolean;
       ctrl?: boolean;
     }
   ): boolean {
     if (key.return) {
       void runSearch();
+      return true;
+    }
+
+    if (key.escape) {
+      setQuery('');
+      setCursor(0);
+      setHistoryIndex(-1);
+      historyDraftRef.current = '';
+      return true;
+    }
+
+    if (key.upArrow || key.downArrow) {
+      const draft = historyIndex === -1 ? query : historyDraftRef.current;
+      const next = stepSearchHistory(
+        searchHistory,
+        historyIndex,
+        key.upArrow ? 'older' : 'newer',
+        query,
+        draft
+      );
+      if (next === null) return true;
+      historyDraftRef.current = draft;
+      const text = next === -1 ? historyDraftRef.current : searchHistory[next]!;
+      setHistoryIndex(next);
+      setQuery(text);
+      setCursor(text.length);
       return true;
     }
 
@@ -490,6 +533,7 @@ export function App({
       if (cursor > 0) {
         setQuery((q) => q.slice(0, cursor - 1) + q.slice(cursor));
         setCursor((c) => c - 1);
+        setHistoryIndex(-1);
       }
       return true;
     }
@@ -497,6 +541,7 @@ export function App({
     if (input && input.length === 1 && !key.meta && !key.ctrl && !isControlChar(input)) {
       setQuery((q) => q.slice(0, cursor) + input + q.slice(cursor));
       setCursor((c) => c + 1);
+      setHistoryIndex(-1);
       return true;
     }
     return false;

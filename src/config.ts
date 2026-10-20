@@ -22,6 +22,10 @@ export function getSessionPath(): string {
   return path.join(getConfigDir(), 'session.json');
 }
 
+export function getSearchHistoryPath(): string {
+  return path.join(getConfigDir(), 'search-history.json');
+}
+
 export function getDaemonPidPath(): string {
   return path.join(getConfigDir(), 'daemon.pid');
 }
@@ -231,6 +235,22 @@ export function loadSession(): SessionFile {
   } catch {
     return { torrents: [] };
   }
+}
+
+/** Newest first */
+export function loadSearchHistory(): string[] {
+  try {
+    const raw = JSON.parse(fs.readFileSync(getSearchHistoryPath(), 'utf8')) as unknown;
+    return z.array(z.string()).parse(raw);
+  } catch {
+    return [];
+  }
+}
+
+export function saveSearchHistory(entries: string[]): void {
+  const p = getSearchHistoryPath();
+  fs.mkdirSync(path.dirname(p), { recursive: true });
+  fs.writeFileSync(p, JSON.stringify(entries, null, 2), 'utf8');
 }
 
 export function saveSession(data: SessionFile): void {
