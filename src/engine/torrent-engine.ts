@@ -618,7 +618,10 @@ export class TorrentEngine extends EventEmitter {
         this.onTorrentReady(tor, options, restoreDlPaused, mediaCategory, pendingKey);
       });
 
-      setImmediate(safeResolve);
+      // Settle once WebTorrent has parsed the id (and passed its duplicate check). Ids
+      // it can't parse are tried as file paths, so their error arrives asynchronously.
+      tor.once('infoHash', safeResolve);
+      tor.once('close', safeResolve);
     });
   }
 
