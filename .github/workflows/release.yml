@@ -44,20 +44,17 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 24
           registry-url: https://registry.npmjs.org/
           cache: npm
 
-      - name: Verify npm token
-        run: npm whoami
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      # Trusted publishing (OIDC) needs npm >= 11.5.1
+      - run: npm install -g npm@latest
 
       - run: npm ci
 
+      # Authenticates via npm trusted publishing (OIDC) — no token needed
       - name: Publish to npm
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           VERSION=$(node -p "require('./package.json').version")
           if npm view "clitorrents@${VERSION}" version >/dev/null 2>&1; then
