@@ -1,8 +1,20 @@
 name: Update Homebrew formula
 
+# Called by release.yml once the GitHub release exists. (An `on: release` trigger never
+# fires there, as releases created with GITHUB_TOKEN don't trigger other workflows.)
+# Can also be run by hand to re-bump the tap for an existing release.
 on:
-  release:
-    types: [published]
+  workflow_call:
+    inputs:
+      tag:
+        description: Release tag (e.g. v0.5.1)
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag (e.g. v0.5.1)
+        required: true
 
 jobs:
   bump-formula:
@@ -17,13 +29,13 @@ jobs:
 
       - name: Bump clitorrents formula
         working-directory: homebrew-tap
-        run: |
-          VERSION="${{ github.event.release.tag_name }}"
-          ./scripts/bump-clitorrents.sh "$VERSION"
+        env:
+          TAG: ${{ inputs.tag }}
+        run: ./scripts/bump-clitorrents.sh "$TAG"
 
       - name: Commit formula update
-        working-directory: homebrew-tap
         uses: stefanzweifel/git-auto-commit-action@v7
         with:
-          commit_message: "chore(clitorrents): bump to ${{ github.event.release.tag_name }}"
+          repository: homebrew-tap
+          commit_message: "chore(clitorrents): bump to ${{ inputs.tag }}"
           file_pattern: Formula/clitorrents.rb
