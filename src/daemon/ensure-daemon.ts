@@ -1,8 +1,9 @@
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import fs from 'node:fs';
 import path from 'node:path';
 import type { AppConfig } from '../config.js';
-import { getDaemonBaseUrl } from '../config.js';
+import { getDaemonBaseUrl, getDaemonLogPath } from '../config.js';
 import { EngineClient } from '../engine/engine-client.js';
 import type { EngineLike } from '../engine/engine-like.js';
 import { readDaemonPid, stopDaemonProcess } from './instance.js';
@@ -42,12 +43,20 @@ function daemonSpawnArgs(): string[] {
 
 export async function spawnDaemon(): Promise<void> {
   const args = daemonSpawnArgs();
-  const child = spawn(process.execPath, args, {
-    detached: true,
-    stdio: 'ignore',
-    cwd: process.cwd(),
-  });
-  child.unref();
+  // Send the detached daemon's output to a log file so crashes leave a trace.
+  const logPath = getDaemonLogPath();
+  fs.mkdirSync(path.dirname(logPath), { recursive: true });
+  const logFd = fs.openSync(logPath, 'a');
+  try {
+    const child = spawn(process.execPath, args, {
+      detached: true,
+      stdio: ['ignore', logFd, logFd],
+      cwd: process.cwd(),
+    });
+    child.unref();
+  } finally {
+    fs.closeSync(logFd);
+  }
 }
 
 export async function ensureDaemonRunning(config: AppConfig): Promise<string> {

@@ -18,6 +18,9 @@ import {
 import { planDownloadLocation } from '../media/classify.js';
 import { ConnectivityMonitor } from '../net/connectivity.js';
 import { infoHashFromMagnet, sessionKeyForMagnet, whenTorrentReady } from './session-utils.js';
+import { applyWebTorrentPatches } from './webtorrent-patches.js';
+
+applyWebTorrentPatches();
 
 const HISTORY_LEN = 48;
 const TICK_MS_ONLINE = 400;

@@ -3,11 +3,30 @@ import { TorrentEngine } from '../engine/torrent-engine.js';
 import { createDaemonServer, listenDaemonServer } from '../daemon/http-server.js';
 import { acquireDaemonLock, releaseDaemonLock } from '../daemon/instance.js';
 
+function logLine(message: string): void {
+  console.error(`[${new Date().toISOString()}] ${message}`);
+}
+
+function describeError(err: unknown): string {
+  return err instanceof Error ? (err.stack ?? err.message) : String(err);
+}
+
 export async function runDaemonCommand(config: AppConfig): Promise<void> {
   acquireDaemonLock();
+  // A stray peer/socket error shouldn't take down every download — log it and keep running.
+  process.on('uncaughtException', (err) => {
+    logLine(`uncaught exception: ${describeError(err)}`);
+  });
+  process.on('unhandledRejection', (reason) => {
+    logLine(`unhandled rejection: ${describeError(reason)}`);
+  });
+  process.on('exit', (code) => {
+    logLine(`daemon exiting (code ${code})`);
+  });
+
   const engine = new TorrentEngine(config);
   engine.on('client-error', (err: Error) => {
-    console.error(`torrent client error: ${err.message}`);
+    logLine(`torrent client error: ${describeError(err)}`);
   });
 
   const finish = (): void => {
@@ -26,9 +45,9 @@ export async function runDaemonCommand(config: AppConfig): Promise<void> {
   await listenDaemonServer(server, config);
   const host = config.daemon?.host ?? '127.0.0.1';
   const port = config.daemon?.port ?? 17359;
-  console.error(`clitorrents daemon listening on http://${host}:${port}`);
+  logLine(`clitorrents daemon listening on http://${host}:${port} (pid ${process.pid})`);
 
   void engine.restoreSession().catch((err) => {
-    console.error(err instanceof Error ? err.message : err);
+    logLine(`restore session failed: ${describeError(err)}`);
   });
 }

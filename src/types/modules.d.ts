@@ -45,6 +45,14 @@ declare module 'webtorrent' {
   }
 }
 
+declare module 'webtorrent/lib/peer.js' {
+  export default class Peer {
+    swarm: unknown;
+    destroyed: boolean;
+    handshake(): void;
+  }
+}
+
 declare module 'parse-torrent' {
   const parseTorrent: (id: unknown) => Promise<Record<string, unknown>>;
   export function toMagnetURI(parsed: Record<string, unknown>): string;

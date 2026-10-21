@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2026-10-21
+
+### Added
+
+- Background daemon writes its output to `daemon.log` in the config directory, with timestamped errors and stack traces (previously discarded)
+
+### Fixed
+
+- Daemon no longer crashes when an encrypted incoming peer connects to a paused torrent (`Cannot read properties of null (reading 'private')`) — works around [webtorrent#3113](https://github.com/webtorrent/webtorrent/issues/3113)
+- Daemon logs uncaught exceptions and unhandled rejections instead of exiting silently
+
 ## [0.5.0] - 2026-10-20
 
 ### Added

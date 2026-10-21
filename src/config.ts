@@ -30,6 +30,10 @@ export function getDaemonPidPath(): string {
   return path.join(getConfigDir(), 'daemon.pid');
 }
 
+export function getDaemonLogPath(): string {
+  return path.join(getConfigDir(), 'daemon.log');
+}
+
 export function getDaemonBaseUrl(config: AppConfig): string {
   const daemon = DaemonConfigSchema.parse(config.daemon ?? {});
   return `http://${daemon.host}:${daemon.port}`;
