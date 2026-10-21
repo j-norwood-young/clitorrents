@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.2] - 2026-10-21
+
+### Added
+
+- Download folders (base and enabled category folders) are checked for write access at startup and when settings change; problems show as a red banner in the TUI and in `daemon.log`
+- Session restore reports why transfers could not be restored
+
+### Fixed
+
+- Transfers no longer vanish silently: when WebTorrent stops a torrent mid-download (e.g. a failed disk write), the daemon now logs the error instead of swallowing it
+- Adding a torrent into an unwritable folder fails immediately with `Download folder is not writable` instead of appearing to succeed and then disappearing from Transfers
+- Homebrew formula is updated automatically after each release
+
 ## [0.5.1] - 2026-10-21
 
 ### Added

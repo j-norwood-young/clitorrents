@@ -1,5 +1,4 @@
 import EventEmitter from 'node:events';
-import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import WebTorrent from 'webtorrent';
@@ -17,6 +16,7 @@ import {
 } from '../config.js';
 import { planDownloadLocation } from '../media/classify.js';
 import { ConnectivityMonitor } from '../net/connectivity.js';
+import { ensureWritableDir, findDownloadDirProblems } from './download-dirs.js';
 import { infoHashFromMagnet, sessionKeyForMagnet, whenTorrentReady } from './session-utils.js';
 import { applyWebTorrentPatches } from './webtorrent-patches.js';
 
@@ -100,6 +100,8 @@ export type AddTorrentOptions = {
 export type SessionRestoreResult = {
   restored: number;
   failed: number;
+  /** Distinct reasons the failed entries could not be restored. */
+  errors?: string[];
 };
 
 type WireLike = {
@@ -134,6 +136,7 @@ export class TorrentEngine extends EventEmitter {
   private persistSessionEnabled: boolean;
   /** Info hashes currently being added (before client.torrents is updated). */
   private pendingAddHashes = new Set<string>();
+  private downloadDirProblems: string[] = [];
 
   constructor(
     config: AppConfig,
@@ -152,7 +155,7 @@ export class TorrentEngine extends EventEmitter {
     for (const entry of loadSession().torrents) {
       this.sessionByHash.set(entry.infoHash, entry);
     }
-    fs.mkdirSync(this.baseDownloadDir, { recursive: true });
+    this.refreshDownloadDirProblems();
     this.client = new WebTorrent({
       ...opts?.clientOptions,
       downloadLimit: normLimit(config.globalDownloadLimitBps),
@@ -191,17 +194,29 @@ export class TorrentEngine extends EventEmitter {
     return this.client.uploadSpeed;
   }
 
+  /** Download folders that are missing or not writable, as user-facing messages. */
+  getDownloadDirProblems(): string[] {
+    return this.downloadDirProblems;
+  }
+
+  private refreshDownloadDirProblems(): void {
+    const next = findDownloadDirProblems(this.config, this.baseDownloadDir);
+    const changed = next.join('\n') !== this.downloadDirProblems.join('\n');
+    this.downloadDirProblems = next;
+    if (changed && next.length > 0) this.emit('download-dir-problems', next);
+  }
+
   /** Applies to new torrents only; in-flight destinations are unchanged. */
   setBaseDownloadDir(dir: string): void {
     this.baseDownloadDir = pathResolve(dir);
-    fs.mkdirSync(this.baseDownloadDir, { recursive: true });
+    this.refreshDownloadDirProblems();
     this.emit('update');
   }
 
   setConfig(config: AppConfig, opts?: { persist?: boolean }): void {
     this.config = config;
     this.baseDownloadDir = resolveBaseDir(config);
-    fs.mkdirSync(this.baseDownloadDir, { recursive: true });
+    this.refreshDownloadDirProblems();
     this.applyGlobalThrottle();
     if (opts?.persist) saveConfig(config);
     this.emit('update');
@@ -236,6 +251,7 @@ export class TorrentEngine extends EventEmitter {
     const entries = [...this.sessionByHash.values()];
     let restored = 0;
     let failed = 0;
+    const errors = new Set<string>();
 
     for (const entry of entries) {
       if (this.findTorrent(entry.infoHash)) continue;
@@ -248,12 +264,14 @@ export class TorrentEngine extends EventEmitter {
           restoreDlPaused: entry.dlPaused,
         });
         restored++;
-      } catch {
+      } catch (err) {
         failed++;
+        errors.add(err instanceof Error ? err.message : String(err));
       }
     }
 
-    const result = { restored, failed };
+    const result: SessionRestoreResult = { restored, failed };
+    if (errors.size > 0) result.errors = [...errors];
     this.emit('session-restored', result);
     return result;
   }
@@ -563,7 +581,13 @@ export class TorrentEngine extends EventEmitter {
       dir = options.downloadDir ?? plan.dir;
       mediaCategory = name ? plan.category : undefined;
     }
-    fs.mkdirSync(dir, { recursive: true });
+    try {
+      ensureWritableDir(dir);
+    } catch (err) {
+      this.refreshDownloadDirProblems();
+      this.emit('update');
+      throw err;
+    }
 
     const restoreDlPaused = options.restoreDlPaused ?? false;
     const magnetStr =
@@ -607,11 +631,20 @@ export class TorrentEngine extends EventEmitter {
         }
       };
 
-      tor.once('error', (err: unknown) => {
+      // WebTorrent destroys a torrent (dropping it from client.torrents) when it errors,
+      // e.g. a failed piece write. After add() settles, report it instead of swallowing it.
+      tor.on('error', (err: unknown) => {
+        const error = err instanceof Error ? err : new Error(String(err));
         if (!settled) {
           settled = true;
-          reject(err instanceof Error ? err : new Error(String(err)));
+          reject(error);
+          return;
         }
+        this.meta.delete(normalizeInfoHash(tor.infoHash));
+        this.emit('torrent-error', { infoHash: normalizeInfoHash(tor.infoHash), name: tor.name, error });
+        // A failed write often means the folder stopped being writable; surface that too.
+        this.refreshDownloadDirProblems();
+        this.emit('update');
       });
 
       whenTorrentReady(tor, () => {

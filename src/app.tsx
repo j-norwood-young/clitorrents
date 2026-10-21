@@ -158,6 +158,8 @@ export function App({
             ? `${prev} · ${result.failed} could not be restored`
             : `${result.failed} transfer(s) could not be restored`
         );
+        const reason = result.errors?.[0];
+        if (reason) setStatus((prev) => `${prev}: ${reason}`);
       }
     });
     return () => {
@@ -885,6 +887,12 @@ export function App({
           Offline — torrents paused, waiting for network…
         </Text>
       ) : null}
+
+      {engine.getDownloadDirProblems().map((problem) => (
+        <Text key={problem} bold color="red">
+          {problem} — downloads will fail until this is fixed
+        </Text>
+      ))}
 
       {!daemonConnected ? (
         <Text bold color="red">

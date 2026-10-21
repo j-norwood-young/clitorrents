@@ -13,6 +13,8 @@ export type DaemonState = {
   networkOnline: boolean;
   config: AppConfig;
   baseDownloadDir: string;
+  /** Omitted by daemons that predate the download-folder check. */
+  downloadDirProblems?: string[];
 };
 
 export type DaemonStatus = {
@@ -65,6 +67,7 @@ function buildState(engine: TorrentEngine): DaemonState {
     networkOnline: engine.isNetworkOnline(),
     config: engine.getConfig(),
     baseDownloadDir: engine.getBaseDownloadDir(),
+    downloadDirProblems: engine.getDownloadDirProblems(),
   };
 }
 

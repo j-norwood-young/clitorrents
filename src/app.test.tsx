@@ -288,6 +288,24 @@ describe('App', () => {
     await expectFrame(/Restored 2 transfer\(s\) from last session · 1 could not be restored/);
   });
 
+  it('includes the reason when session entries could not be restored', async () => {
+    engine.restoreSession = async () => ({
+      restored: 0,
+      failed: 1,
+      errors: ['Download folder is not writable: /dl (EACCES)'],
+    });
+    await start();
+    await expectFrame(/1 transfer\(s\) could not be restored: Download folder is not writable/);
+  });
+
+  it('warns about unwritable download folders', async () => {
+    await start();
+    assert.doesNotMatch(frame(), /not writable/);
+    engine.downloadDirProblems = ['Download folder is not writable: /dl (EACCES)'];
+    engine.emit('update');
+    await expectFrame(/Download folder is not writable: \/dl \(EACCES\) — downloads will fail/);
+  });
+
   it('edits text settings, picks choices and toggles categories in the config view', async () => {
     await start();
     await press(KEY.ctrlO);

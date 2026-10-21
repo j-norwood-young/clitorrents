@@ -3,12 +3,12 @@
 #
 # Usage:
 #   ./scripts/test-release-docker.sh [version]     # build linux-x64 tarball locally if needed
-#   DOWNLOAD=1 ./scripts/test-release-docker.sh 0.5.1   # fetch tarball from GitHub release
+#   DOWNLOAD=1 ./scripts/test-release-docker.sh 0.5.2   # fetch tarball from GitHub release
 #   TARBALL=/path/to.tgz ./scripts/test-release-docker.sh
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-VERSION="${1:-$(node -p "require('$ROOT/package.json').version" 2>/dev/null || echo 0.5.1)}"
+VERSION="${1:-$(node -p "require('$ROOT/package.json').version" 2>/dev/null || echo 0.5.2)}"
 VERSION="${VERSION#v}"
 PLATFORM="${PLATFORM:-linux-x64}"
 IMAGE="${IMAGE:-node:22-bookworm-slim}"

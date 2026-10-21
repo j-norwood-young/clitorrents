@@ -129,6 +129,10 @@ export class EngineClient extends EventEmitter implements EngineLike {
     return this.state.baseDownloadDir;
   }
 
+  getDownloadDirProblems(): string[] {
+    return this.state.downloadDirProblems ?? [];
+  }
+
   isNetworkOnline(): boolean {
     return this.state.networkOnline;
   }

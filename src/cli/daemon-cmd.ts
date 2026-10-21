@@ -28,6 +28,13 @@ export async function runDaemonCommand(config: AppConfig): Promise<void> {
   engine.on('client-error', (err: Error) => {
     logLine(`torrent client error: ${describeError(err)}`);
   });
+  for (const problem of engine.getDownloadDirProblems()) logLine(problem);
+  engine.on('download-dir-problems', (problems: string[]) => {
+    for (const problem of problems) logLine(problem);
+  });
+  engine.on('torrent-error', (e: { infoHash: string; name?: string; error: Error }) => {
+    logLine(`torrent ${e.name || e.infoHash} stopped: ${describeError(e.error)}`);
+  });
 
   const finish = (): void => {
     releaseDaemonLock();

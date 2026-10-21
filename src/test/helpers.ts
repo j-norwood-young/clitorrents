@@ -182,6 +182,7 @@ export class FakeEngine extends EventEmitter implements EngineLike {
   config: AppConfig;
   baseDir: string;
   online = true;
+  downloadDirProblems: string[] = [];
   globalLimits = { download: -1, upload: -1 };
   defaultRatio: number | null = null;
   paused = new Set<string>();
@@ -207,6 +208,10 @@ export class FakeEngine extends EventEmitter implements EngineLike {
 
   getBaseDownloadDir(): string {
     return this.baseDir;
+  }
+
+  getDownloadDirProblems(): string[] {
+    return this.downloadDirProblems;
   }
 
   setBaseDownloadDir(dir: string): void {

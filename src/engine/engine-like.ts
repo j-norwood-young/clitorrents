@@ -12,6 +12,8 @@ import type {
 export interface EngineLike extends EventEmitter {
   getConfig(): AppConfig;
   getBaseDownloadDir(): string;
+  /** Download folders that are missing or not writable, as user-facing messages. */
+  getDownloadDirProblems(): string[];
   isNetworkOnline(): boolean;
   /** Remote clients only: false while the daemon is unreachable. Emits 'daemon' on change. */
   isDaemonConnected?(): boolean;

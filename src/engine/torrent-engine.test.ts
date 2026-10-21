@@ -307,4 +307,38 @@ describe('TorrentEngine (mock swarm)', () => {
     assert.equal(seen.length, 1);
     assert.equal(seen[0]!.message, 'bind EADDRINUSE');
   });
+
+  it(
+    'refuses to add into an unwritable folder and reports the problem',
+    { skip: process.getuid?.() === 0 ? 'running as root' : false },
+    async () => {
+      fx = createEngineFixture();
+      assert.deepEqual(fx.engine.getDownloadDirProblems(), []);
+      fs.chmodSync(fx.downloadDir, 0o500);
+      try {
+        await assert.rejects(
+          fx.engine.add(movie().magnet, { name: movie().name }),
+          /Download folder is not writable/
+        );
+        assert.equal(fx.engine.getSnapshots().length, 0);
+        assert.equal(fx.engine.getDownloadDirProblems().length, 1);
+      } finally {
+        fs.chmodSync(fx.downloadDir, 0o700);
+      }
+    }
+  );
+
+  it('reports torrents that WebTorrent destroys after add as torrent-error', async () => {
+    fx = createEngineFixture();
+    const t = movie();
+    await fx.engine.add(t.magnet, { name: t.name });
+    const seen: { infoHash: string; error: Error }[] = [];
+    fx.engine.on('torrent-error', (e: { infoHash: string; error: Error }) => seen.push(e));
+    const tor = fx.engine.findTorrent(t.infoHash) as unknown as { _destroy(err: Error): void };
+    tor._destroy(new Error('ENOSPC: no space left on device'));
+    assert.equal(seen.length, 1);
+    assert.equal(seen[0]!.infoHash, t.infoHash);
+    assert.match(seen[0]!.error.message, /ENOSPC/);
+    assert.equal(fx.engine.findTorrent(t.infoHash), undefined);
+  });
 });
